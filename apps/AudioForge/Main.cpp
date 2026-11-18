@@ -1,5 +1,6 @@
 #include "app/AppPaths.h"
 #include "app/CrashReporting.h"
+#include "app/DeviceService.h"
 #include "core/Log.h"
 #include "core/Version.h"
 #include "ui/shell/MainWindow.h"
@@ -37,8 +38,14 @@ public:
             af::app::triggerTestCrash();
         }
 
+        af::app::DeviceService::Options deviceOptions;
+        deviceOptions.settingsFile = paths.settings / "AudioDevice.xml";
+        devices_ = std::make_unique<af::app::DeviceService>(std::move(deviceOptions));
+        devices_->initialise();
+
         juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
-        mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths);
+        mainWindow_ =
+            std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths, *devices_);
         aflog::info("Main window opened");
 
         // CI start-up/shut-down check: open the main window, then quit through the normal path.
@@ -53,6 +60,7 @@ public:
     {
         // Reverse order of creation (architecture section 4.2, application shutdown).
         mainWindow_.reset();
+        devices_.reset(); // closes the device: the audio callback stops, graphs are reclaimed
         juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
         aflog::info("AudioForge shut down normally");
         aflog::shutdown();
@@ -89,6 +97,7 @@ private:
 
     af::ui::LookAndFeel lookAndFeel_;
     juce::ApplicationCommandManager commands_;
+    std::unique_ptr<af::app::DeviceService> devices_;
     std::unique_ptr<af::ui::MainWindow> mainWindow_;
 };
 

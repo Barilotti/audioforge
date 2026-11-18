@@ -28,6 +28,15 @@ af_set_warnings(af_unit_tests)
 set_target_properties(af_unit_tests PROPERTIES FOLDER "Tests")
 catch_discover_tests(af_unit_tests DISCOVERY_MODE PRE_TEST)
 
+# Tests of JUCE-based services (app module) on fake audio devices.
+add_executable(af_app_tests
+    app/AppTestMain.cpp
+    app/DeviceServiceTests.cpp)
+target_link_libraries(af_app_tests PRIVATE AudioForge::app Catch2::Catch2)
+af_set_warnings(af_app_tests)
+set_target_properties(af_app_tests PROPERTIES FOLDER "Tests")
+catch_discover_tests(af_app_tests DISCOVERY_MODE PRE_TEST TEST_PREFIX "app.")
+
 # Architecture rules: forbidden #include directions between modules.
 add_test(NAME architecture.module_includes
     COMMAND "${CMAKE_COMMAND}" -DSOURCE_DIR=${PROJECT_SOURCE_DIR}/src

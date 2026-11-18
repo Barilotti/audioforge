@@ -59,14 +59,15 @@ af_add_module(app
     SOURCES
         app/AppPaths.cpp
         app/CrashReporting.cpp
+        app/DeviceService.cpp
+        app/TestTone.cpp
     PUBLIC_DEPS
         AudioForge::model
         AudioForge::serialization
         AudioForge::engine
         AudioForge::library
         AudioForge::analysis
-    PRIVATE_DEPS
-        AudioForge::juce)
+        AudioForge::juce) # DeviceService exposes juce::AudioDeviceManager
 if(WIN32)
     target_link_libraries(af_app PRIVATE Dbghelp)
 endif()
@@ -74,6 +75,7 @@ endif()
 # User interface. The only module allowed to use JUCE GUI classes.
 af_add_module(ui
     SOURCES
+        ui/settings/AudioSettingsComponent.cpp
         ui/shell/AboutComponent.cpp
         ui/shell/MainWindow.cpp
         ui/shell/Panel.cpp

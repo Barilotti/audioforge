@@ -11,6 +11,7 @@ enum CommandIds : juce::CommandID
 {
     showAbout = 0x2001,
     openLogsFolder = 0x2002,
+    showAudioSettings = 0x2003,
 };
 
 } // namespace af::ui

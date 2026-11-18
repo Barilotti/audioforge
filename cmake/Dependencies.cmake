@@ -37,6 +37,7 @@ target_link_libraries(af_juce
         juce::juce_audio_basics
         juce::juce_audio_formats
         juce::juce_audio_devices
+        juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
@@ -54,6 +55,9 @@ target_compile_definitions(af_juce
         JUCE_WASAPI=1
         JUCE_DIRECTSOUND=0
         JUCE_JACK=0
+        # Linux builds are for CI and development only and have no sound hardware: ALSA would
+        # only trip JUCE assertions when the MIDI sequencer is missing. Tests use fake devices.
+        $<$<PLATFORM_ID:Linux>:JUCE_ALSA=0>
         # MP3 decoding arrives in stage S10.
         JUCE_USE_MP3AUDIOFORMAT=0
         JUCE_MODAL_LOOPS_PERMITTED=0
