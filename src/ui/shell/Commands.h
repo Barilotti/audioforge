@@ -10,6 +10,7 @@ namespace af::ui
 enum CommandIds : juce::CommandID
 {
     showAbout = 0x2001,
+    openLogsFolder = 0x2002,
 };
 
 } // namespace af::ui

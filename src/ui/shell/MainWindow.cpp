@@ -16,9 +16,11 @@ enum MenuIndex
 };
 } // namespace
 
-MainWindow::MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands)
+MainWindow::MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands,
+                       app::AppPaths paths)
     : DocumentWindow(name, Theme::current().colours.windowBackground, DocumentWindow::allButtons)
     , commands_(commands)
+    , paths_(std::move(paths))
 {
     setUsingNativeTitleBar(true);
 
@@ -69,6 +71,7 @@ juce::ApplicationCommandTarget* MainWindow::getNextCommandTarget()
 void MainWindow::getAllCommands(juce::Array<juce::CommandID>& commands)
 {
     commands.add(CommandIds::showAbout);
+    commands.add(CommandIds::openLogsFolder);
 }
 
 void MainWindow::getCommandInfo(juce::CommandID commandId, juce::ApplicationCommandInfo& result)
@@ -78,6 +81,12 @@ void MainWindow::getCommandInfo(juce::CommandID commandId, juce::ApplicationComm
         result.setInfo(TRANS("About AudioForge..."), TRANS("Shows version information"),
                        TRANS("Help"), 0);
     }
+    else if (commandId == CommandIds::openLogsFolder)
+    {
+        result.setInfo(TRANS("Open Logs Folder"),
+                       TRANS("Opens the folder with log files and crash reports"), TRANS("Help"),
+                       0);
+    }
 }
 
 bool MainWindow::perform(const InvocationInfo& info)
@@ -85,6 +94,13 @@ bool MainWindow::perform(const InvocationInfo& info)
     if (info.commandID == CommandIds::showAbout)
     {
         AboutComponent::show(this);
+        return true;
+    }
+    if (info.commandID == CommandIds::openLogsFolder)
+    {
+        const juce::File folder{juce::String{paths_.localData.wstring().c_str()}};
+        folder.createDirectory();
+        folder.startAsProcess();
         return true;
     }
     return false;
@@ -104,6 +120,8 @@ juce::PopupMenu MainWindow::getMenuForIndex(int topLevelMenuIndex, const juce::S
     }
     else if (topLevelMenuIndex == MenuIndex::helpMenu)
     {
+        menu.addCommandItem(&commands_, CommandIds::openLogsFolder);
+        menu.addSeparator();
         menu.addCommandItem(&commands_, CommandIds::showAbout);
     }
     return menu;

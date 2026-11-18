@@ -1,3 +1,6 @@
+#include "app/AppPaths.h"
+#include "app/CrashReporting.h"
+#include "core/Log.h"
 #include "core/Version.h"
 #include "ui/shell/MainWindow.h"
 #include "ui/theme/LookAndFeel.h"
@@ -9,6 +12,8 @@
 
 namespace
 {
+
+namespace aflog = af::core::log;
 
 class AudioForgeApplication final : public juce::JUCEApplication
 {
@@ -22,8 +27,19 @@ public:
 
     void initialise(const juce::String& commandLine) override
     {
+        const auto paths = af::app::AppPaths::forCurrentUser();
+        af::app::installCrashHandler(paths.crashDumps);
+        startLogging(paths);
+
+        if (commandLine.contains("--crash-test"))
+        {
+            aflog::warning("Crash test requested from the command line");
+            af::app::triggerTestCrash();
+        }
+
         juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
-        mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_);
+        mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths);
+        aflog::info("Main window opened");
 
         // CI start-up/shut-down check: open the main window, then quit through the normal path.
         // Leaks or crashes on shutdown fail the test (JUCE's leak detector asserts in debug).
@@ -38,11 +54,39 @@ public:
         // Reverse order of creation (architecture section 4.2, application shutdown).
         mainWindow_.reset();
         juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
+        aflog::info("AudioForge shut down normally");
+        aflog::shutdown();
     }
 
     void systemRequestedQuit() override { quit(); }
 
 private:
+    static void startLogging(const af::app::AppPaths& paths)
+    {
+        const auto logFile = aflog::initialise({.directory = paths.logs,
+#ifdef NDEBUG
+                                                .minLevel = aflog::Level::info,
+                                                .alsoToStderr = false
+#else
+                                                .minLevel = aflog::Level::debug,
+                                                .alsoToStderr = true
+#endif
+        });
+        if (!logFile)
+        {
+            // Not fatal: messages go to stderr instead.
+            aflog::error("Cannot start file logging: {}", logFile.error().describe());
+        }
+
+        aflog::info("AudioForge {} starting", af::core::buildDescription());
+        aflog::info("{}", af::core::juceVersionString());
+        aflog::info("OS: {}, CPU: {} x{}, RAM: {} MB",
+                    juce::SystemStats::getOperatingSystemName().toStdString(),
+                    juce::SystemStats::getCpuModel().toStdString(), juce::SystemStats::getNumCpus(),
+                    juce::SystemStats::getMemorySizeInMegabytes());
+        aflog::info("Data folder: {}", paths.localData.string());
+    }
+
     af::ui::LookAndFeel lookAndFeel_;
     juce::ApplicationCommandManager commands_;
     std::unique_ptr<af::ui::MainWindow> mainWindow_;

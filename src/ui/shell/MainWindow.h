@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/AppPaths.h"
 #include "ui/shell/ShellComponent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -13,7 +14,8 @@ class MainWindow final : public juce::DocumentWindow,
                          private juce::MenuBarModel
 {
 public:
-    MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands);
+    MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands,
+               app::AppPaths paths);
     ~MainWindow() override;
 
     [[nodiscard]] ShellComponent& shell() noexcept { return *shell_; }
@@ -34,6 +36,7 @@ private:
     void menuItemSelected(int menuItemId, int topLevelMenuIndex) override;
 
     juce::ApplicationCommandManager& commands_;
+    app::AppPaths paths_;
     ShellComponent* shell_ = nullptr; // owned by the window as its content component
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)

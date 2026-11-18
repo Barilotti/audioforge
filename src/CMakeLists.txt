@@ -38,12 +38,20 @@ af_add_module(library PUBLIC_DEPS AudioForge::assets AudioForge::core)
 
 # Application services: ProjectSession, autosave, export, settings.
 af_add_module(app
+    SOURCES
+        app/AppPaths.cpp
+        app/CrashReporting.cpp
     PUBLIC_DEPS
         AudioForge::model
         AudioForge::serialization
         AudioForge::engine
         AudioForge::library
-        AudioForge::analysis)
+        AudioForge::analysis
+    PRIVATE_DEPS
+        AudioForge::juce)
+if(WIN32)
+    target_link_libraries(af_app PRIVATE Dbghelp)
+endif()
 
 # User interface. The only module allowed to use JUCE GUI classes.
 af_add_module(ui
