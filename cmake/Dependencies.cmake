@@ -11,6 +11,17 @@ CPMAddPackage(
     GIT_TAG 8.0.17-security
     GIT_SHALLOW TRUE)
 
+# xxHash: content hashes of assets (peak cache key, fingerprint for Relink). Header-only use.
+CPMAddPackage(
+    NAME xxHash
+    GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
+    GIT_TAG v0.8.3
+    GIT_SHALLOW TRUE
+    DOWNLOAD_ONLY YES)
+add_library(af_xxhash INTERFACE)
+add_library(AudioForge::xxhash ALIAS af_xxhash)
+target_include_directories(af_xxhash SYSTEM INTERFACE "${xxHash_SOURCE_DIR}")
+
 if(AF_BUILD_TESTS)
     CPMAddPackage(
         NAME Catch2

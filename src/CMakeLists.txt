@@ -36,9 +36,13 @@ af_add_module(assets
     SOURCES
         assets/AudioBufferCache.cpp
         assets/AudioDecoder.cpp
+        assets/ContentHash.cpp
         assets/MemoryBudget.cpp
+        assets/PeakCache.cpp
+        assets/PeakData.cpp
         assets/WavDecoder.cpp
     PUBLIC_DEPS AudioForge::core)
+target_link_libraries(af_assets PRIVATE AudioForge::xxhash)
 
 # Render graph, real-time player, offline renderer, devices.
 af_add_module(engine

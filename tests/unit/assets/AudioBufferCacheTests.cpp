@@ -1,12 +1,17 @@
 #include "TestFiles.h"
 #include "assets/AudioBufferCache.h"
 #include "assets/AudioDecoder.h"
+#include "assets/ContentHash.h"
+#include "assets/PeakCache.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -21,6 +26,7 @@ using af::test::fixtureFrames;
 using af::test::fixtureSample;
 using af::test::TempDir;
 using af::test::wavFixture;
+using af::test::writeBytes;
 
 namespace
 {
@@ -457,4 +463,103 @@ TEST_CASE("Audio produced in memory can be inserted as a ready asset", "[assets]
     REQUIRE_FALSE(tooBig.ok());
     REQUIRE(tooBig.error().code == ErrorCode::outOfMemory);
     REQUIRE_FALSE(cache.insertDecoded(key, nullptr).ok());
+}
+
+TEST_CASE("Decoding computes peaks in the same pass and stores them in the peak cache",
+          "[assets][cache][peaks]")
+{
+    const TempDir dir;
+    auto o = options(gibibyte, gibibyte);
+    o.peakCache = std::make_shared<PeakCache>(dir / "peaks");
+    AudioBufferCache cache{std::move(o)};
+
+    const auto key = Uuid::generate();
+    REQUIRE(decodeAndWait(cache, key, stereoFixture) == AssetState::ready);
+    const auto status = cache.status(key);
+    REQUIRE(status.peaks != nullptr);
+    REQUIRE(status.contentHash.has_value());
+    REQUIRE(*status.contentHash == hashFile(stereoFixture).value());
+
+    // The reference: peaks built from the decoded samples.
+    PeakBuilder reference{status.audio->sampleRate(), 2, status.audio->frames()};
+    std::array<const float*, 2> channels{status.audio->channel(0), status.audio->channel(1)};
+    reference.add(channels, status.audio->frames());
+    const auto expected = reference.finish();
+    REQUIRE(std::equal(status.peaks->storage().begin(), status.peaks->storage().end(),
+                       expected->storage().begin(), expected->storage().end()));
+    REQUIRE(status.peaks->level(0, 0)[0].max > 0.5f);
+
+    REQUIRE(std::filesystem::exists(dir / "peaks" / (status.contentHash->toHex() + ".afpk")));
+
+    // Eviction drops the audio but keeps the peaks for the waveform.
+    REQUIRE(cache.evictUnpinned() == 1);
+    REQUIRE(cache.status(key).state == AssetState::evicted);
+    REQUIRE(cache.status(key).peaks == status.peaks);
+}
+
+TEST_CASE("Opening known content takes the peaks from the cache before decoding finishes",
+          "[assets][cache][peaks]")
+{
+    const TempDir dir;
+    const std::vector<unsigned char> fakeFile{'F', 'A', 'K', 'E', 1, 2, 3};
+    writeBytes(dir / "first name.fake", fakeFile);
+    writeBytes(dir / "moved and renamed.fake", fakeFile);
+
+    // Peaks a decode would never produce (the fake signal is a constant 0.25), so a match
+    // proves they came from the cache file.
+    auto gate = std::make_shared<Gate>();
+    gate->frames = 10'000;
+    const auto peakCache = std::make_shared<PeakCache>(dir / "peaks");
+    PeakData planted{48'000, 1, gate->frames};
+    for (auto& peak : planted.writableStorage())
+    {
+        peak = {-0.75f, 0.5f};
+    }
+    REQUIRE(peakCache->store(hashFile(dir / "first name.fake").value(), planted));
+
+    auto o = options(gibibyte, gibibyte, nullptr, gate);
+    o.peakCache = peakCache;
+    AudioBufferCache cache{std::move(o)};
+    const auto key = Uuid::generate();
+    cache.request(key, dir / "moved and renamed.fake");
+
+    REQUIRE(waitFor([&] { return cache.status(key).peaks != nullptr; }));
+    const auto early = cache.status(key);
+    REQUIRE(early.state == AssetState::decoding); // the gate is still closed
+    REQUIRE(early.peaks->range(0, 0, 10'000) == MinMax{-0.75f, 0.5f});
+
+    gate->open = true;
+    REQUIRE(cache.waitUntilIdle(10s));
+    const auto done = cache.status(key);
+    REQUIRE(done.state == AssetState::ready);
+    REQUIRE(done.peaks == early.peaks); // not recomputed
+}
+
+TEST_CASE("Cached peaks that do not fit the file are ignored and rebuilt", "[assets][cache][peaks]")
+{
+    const TempDir dir;
+    const auto peakCache = std::make_shared<PeakCache>(dir / "peaks");
+    const PeakData wrongLength{48'000, 2, 5};
+    REQUIRE(peakCache->store(hashFile(stereoFixture).value(), wrongLength));
+
+    auto o = options(gibibyte, gibibyte);
+    o.peakCache = peakCache;
+    AudioBufferCache cache{std::move(o)};
+    const auto key = Uuid::generate();
+    REQUIRE(decodeAndWait(cache, key, stereoFixture) == AssetState::ready);
+    REQUIRE(cache.status(key).peaks->frames() == fixtureFrames);
+    REQUIRE(peakCache->load(hashFile(stereoFixture).value())->frames() == fixtureFrames);
+}
+
+TEST_CASE("Audio inserted from memory gets peaks too", "[assets][cache][peaks]")
+{
+    AudioBufferCache cache{options(gibibyte, gibibyte)};
+    auto audio = std::make_shared<DecodedAudio>(48'000, 1, 1000);
+    audio->writableChannel(0)[300] = -0.5f;
+    const auto key = Uuid::generate();
+    REQUIRE(cache.insertDecoded(key, audio));
+    const auto peaks = cache.status(key).peaks;
+    REQUIRE(peaks != nullptr);
+    REQUIRE(peaks->level(0, 0)[1] == MinMax{-0.5f, 0.0f});
+    REQUIRE(peaks->range(0, 0, 1000) == MinMax{-0.5f, 0.0f});
 }
