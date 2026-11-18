@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace af::ui
 {
@@ -117,6 +118,61 @@ void TimelinePainter::paintPlayhead(juce::Graphics& g, const TimelineLayout& lay
     g.fillPath(head);
 }
 
+void TimelinePainter::paintWaveform(juce::Graphics& g, juce::Rectangle<float> area,
+                                    const TimelineClip& clip, const TimelineGeometry& geometry,
+                                    int laneX)
+{
+    constexpr int maxBands = 8;
+    const int channels = std::min(clip.channels(), maxBands);
+    if (channels <= 0 || area.getHeight() < 4.0f || area.getWidth() < 1.0f)
+    {
+        return;
+    }
+    const auto& colours = Theme::current().colours;
+    const float bandHeight = area.getHeight() / static_cast<float>(channels);
+    // Only the columns inside the area being repainted (the playhead strip, for example).
+    const auto dirty = g.getClipBounds();
+    const auto x0 = std::max(static_cast<int>(std::floor(area.getX())), dirty.getX());
+    const auto x1 = std::min(static_cast<int>(std::ceil(area.getRight())), dirty.getRight());
+    if (x1 <= x0)
+    {
+        return;
+    }
+
+    // Whole-pixel columns filled one by one: renderers fill integer rectangles on a fast path,
+    // while a RectangleList is first turned into an edge table (several times slower).
+    std::vector<juce::Rectangle<int>> columns;
+    columns.reserve(static_cast<std::size_t>(x1 - x0) * static_cast<std::size_t>(channels));
+    for (int ch = 0; ch < channels; ++ch)
+    {
+        const float top = area.getY() + static_cast<float>(ch) * bandHeight;
+        const float centre = top + bandHeight * 0.5f;
+        const float scale = bandHeight * 0.5f;
+        g.setColour(colours.selection.brighter(0.2f).withAlpha(0.5f));
+        g.fillRect(juce::Rectangle<float>{area.getX(), centre, area.getWidth(), 1.0f});
+        for (int x = x0; x < x1; ++x)
+        {
+            const double t0 = geometry.timeForX(x - laneX);
+            const double t1 = geometry.timeForX(x + 1 - laneX);
+            const auto range = clip.columnRange(ch, t0, t1);
+            if (!range)
+            {
+                continue;
+            }
+            const auto yTop =
+                static_cast<int>(std::floor(centre - std::clamp(range->max, -1.0f, 1.0f) * scale));
+            const auto yBottom =
+                static_cast<int>(std::ceil(centre - std::clamp(range->min, -1.0f, 1.0f) * scale));
+            columns.emplace_back(x, yTop, 1, std::max(1, yBottom - yTop));
+        }
+    }
+    g.setColour(colours.textPrimary.withAlpha(0.85f));
+    for (const auto& column : columns)
+    {
+        g.fillRect(column);
+    }
+}
+
 int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
                            const TimelineGeometry& geometry, const TimelineModel& model,
                            std::optional<double> playhead)
@@ -133,17 +189,29 @@ int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
 
     int drawn = 0;
     const auto [first, last] = layout.visibleLayers(model.layers.size());
-    const double viewStart = geometry.viewStart();
-    const double viewEnd = geometry.viewEnd();
+    const auto repainted = g.getClipBounds().getIntersection(layout.lanes);
+    const double viewStart =
+        std::max(geometry.viewStart(), geometry.timeForX(repainted.getX() - layout.lanes.getX()));
+    const double viewEnd =
+        std::min(geometry.viewEnd(), geometry.timeForX(repainted.getRight() - layout.lanes.getX()));
     for (auto index = first; index < last; ++index)
     {
         const auto& layer = model.layers[index];
         const auto row = layout.rowBounds(index);
+        const auto dirty = g.getClipBounds();
+        if (!row.withX(layout.headers.getX()).withRight(layout.lanes.getRight()).intersects(dirty))
+        {
+            continue; // nothing of this row is repainted
+        }
         {
             const juce::Graphics::ScopedSaveState state{g};
             g.reduceClipRegion(layout.lanes);
-            g.setColour(index % 2 == 0 ? colours.panelBackground
-                                       : colours.panelBackground.brighter(0.03f));
+            const auto rowColour =
+                index % 2 == 0 ? colours.panelBackground : colours.panelBackground.brighter(0.03f);
+            // Opaque clip colours: the body is painted over the outline (no stroked path).
+            const auto clipFill = rowColour.overlaidWith(colours.selection.withAlpha(0.55f));
+            const auto clipOutline = colours.selection.brighter(0.4f);
+            g.setColour(rowColour);
             g.fillRect(row);
             g.setColour(colours.border);
             g.fillRect(row.withTop(row.getBottom() - 1));
@@ -167,10 +235,25 @@ int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
                                            static_cast<float>(std::min(x1, row.getRight() + 4.0) -
                                                               std::max(x0, row.getX() - 4.0)),
                                            static_cast<float>(row.getHeight() - 7)};
-                g.setColour(colours.selection.withAlpha(0.55f));
+                // Outline: the rounded box; body: a whole-pixel rectangle 1 px inside it, which
+                // stays within the rounded corners (radius 3) and fills on the fast path.
+                g.setColour(clipOutline);
                 g.fillRoundedRectangle(box, theme.metrics.cornerRadius);
-                g.setColour(colours.selection.brighter(0.4f));
-                g.drawRoundedRectangle(box, theme.metrics.cornerRadius, 1.0f);
+                g.setColour(clipFill);
+                g.fillRect(box.reduced(1.0f).toNearestInt());
+                const auto visible = box.getIntersection(row.toFloat());
+                if (it->peaks)
+                {
+                    paintWaveform(g, visible.withTrimmedTop(18.0f).withTrimmedBottom(2.0f), *it,
+                                  geometry, row.getX());
+                }
+                else if (visible.getWidth() > 60.0f)
+                {
+                    g.setColour(it->failed ? colours.error : colours.textSecondary);
+                    g.setFont(juce::FontOptions{theme.fontSizes.small});
+                    g.drawText(it->failed ? TRANS("Offline") : TRANS("Loading..."),
+                               visible.withTrimmedTop(18.0f), juce::Justification::centred, true);
+                }
                 if (box.getWidth() > 24.0f)
                 {
                     g.setColour(colours.textPrimary);

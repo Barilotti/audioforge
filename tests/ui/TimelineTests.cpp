@@ -1,3 +1,5 @@
+#include "assets/AudioBufferCache.h"
+#include "assets/PeakData.h"
 #include "model/Node.h"
 #include "ui/timeline/TimelineGeometry.h"
 #include "ui/timeline/TimelineModel.h"
@@ -5,10 +7,14 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <memory>
+#include <random>
 #include <vector>
 
 using namespace af;
@@ -198,5 +204,148 @@ TEST_CASE("Two hundred visible clips paint within a 60 FPS frame", "[ui][timelin
     REQUIRE(perFrame < 16.0);
 #else
     REQUIRE(perFrame < 200.0);
+#endif
+}
+
+namespace
+{
+
+/// A clip over frames [in, in + length) of a random stereo asset, with peaks and audio.
+struct WaveClip
+{
+    std::shared_ptr<assets::DecodedAudio> audio;
+    ui::TimelineClip clip;
+
+    WaveClip(core::FrameCount in, core::FrameCount length, bool reverse)
+    {
+        constexpr core::FrameCount frames = 500'000;
+        audio = std::make_shared<assets::DecodedAudio>(48'000, 2, frames);
+        std::mt19937 rng{17};
+        std::uniform_real_distribution<float> dist{-1.0f, 1.0f};
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            std::generate_n(audio->writableChannel(ch), frames, [&] { return dist(rng); });
+        }
+        assets::PeakBuilder builder{48'000, 2, frames};
+        std::array<const float*, 2> channels{audio->channel(0), audio->channel(1)};
+        builder.add(channels, frames);
+        clip.peaks = builder.finish();
+        clip.audio = audio;
+        clip.start = 3.0;
+        clip.sourceIn = in;
+        clip.sourceLength = length;
+        clip.sourceRate = 48'000;
+        clip.length = static_cast<double>(length) / 48'000.0;
+        clip.reverse = reverse;
+    }
+
+    /// Exact min/max of the source frames that timeline [t0, t1) plays.
+    [[nodiscard]] assets::MinMax exact(int channel, double t0, double t1) const
+    {
+        auto a = static_cast<core::FrameCount>(std::floor((t0 - clip.start) * 48'000.0));
+        auto b = static_cast<core::FrameCount>(std::ceil((t1 - clip.start) * 48'000.0));
+        a = std::clamp<core::FrameCount>(a, 0, clip.sourceLength);
+        b = std::clamp<core::FrameCount>(b, a + 1, clip.sourceLength);
+        const auto first = clip.reverse ? clip.sourceIn + clip.sourceLength - b : clip.sourceIn + a;
+        const auto last = clip.reverse ? clip.sourceIn + clip.sourceLength - a : clip.sourceIn + b;
+        const float* s = audio->channel(channel);
+        const auto [lo, hi] = std::minmax_element(s + first, s + last);
+        return {*lo, *hi};
+    }
+};
+
+} // namespace
+
+TEST_CASE("Waveform columns are correct at every zoom level", "[ui][timeline][waveform]")
+{
+    const bool reverse = GENERATE(false, true);
+    const WaveClip w{12'345, 400'000, reverse};
+
+    // From several samples per pixel up to far more than the coarsest peak block.
+    for (const double framesPerPixel :
+         {0.25, 1.0, 7.0, 100.0, 255.0, 256.0, 1000.0, 5000.0, 70'000.0, 200'000.0})
+    {
+        const double secondsPerPixel = framesPerPixel / 48'000.0;
+        for (int column = 0; column < 40; ++column)
+        {
+            const double t0 = w.clip.start + 0.1 + column * secondsPerPixel * 3.7;
+            const double t1 = t0 + secondsPerPixel;
+            if (t1 > w.clip.end())
+            {
+                break;
+            }
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const auto shown = w.clip.columnRange(ch, t0, t1);
+                REQUIRE(shown.has_value());
+                const auto exact = w.exact(ch, t0, t1);
+                // Never hides a peak; exact where samples are used (finer than 256 frames).
+                REQUIRE(shown->min <= exact.min);
+                REQUIRE(shown->max >= exact.max);
+                if (framesPerPixel < 255.0)
+                {
+                    REQUIRE(*shown == exact);
+                }
+            }
+        }
+    }
+    REQUIRE_FALSE(w.clip.columnRange(0, 0.0, 1.0).has_value());     // before the clip
+    REQUIRE_FALSE(w.clip.columnRange(0, 100.0, 101.0).has_value()); // after it
+}
+
+TEST_CASE("Without audio in memory the waveform falls back to the peaks",
+          "[ui][timeline][waveform]")
+{
+    WaveClip w{0, 100'000, false};
+    w.clip.audio.reset(); // evicted: only peaks remain
+    const double t0 = w.clip.start + 0.5;
+    const auto shown = w.clip.columnRange(0, t0, t0 + 10.0 / 48'000.0);
+    REQUIRE(shown.has_value());
+    const auto exact = w.exact(0, t0, t0 + 10.0 / 48'000.0);
+    REQUIRE(shown->min <= exact.min);
+    REQUIRE(shown->max >= exact.max);
+
+    w.clip.peaks.reset(); // still loading: nothing to draw
+    REQUIRE_FALSE(w.clip.columnRange(0, t0, t0 + 0.01).has_value());
+}
+
+TEST_CASE("Clips with waveforms still paint within a 60 FPS frame", "[ui][timeline][performance]")
+{
+    model::EventId eventId;
+    const auto project = makeProject(10, 20, eventId);
+    auto model = TimelineModel::fromProject(project, eventId);
+    const WaveClip w{0, 48'000, false};
+    for (auto& layer : model.layers)
+    {
+        for (auto& clip : layer.clips)
+        {
+            clip.peaks = w.clip.peaks;
+            clip.audio = w.clip.audio;
+        }
+    }
+
+    juce::Image image{juce::Image::RGB, 1600, 900, true};
+    juce::Graphics g{image};
+    auto layout = TimelineLayout::forArea(image.getBounds());
+    TimelineGeometry geometry;
+    geometry.setWidth(layout.lanes.getWidth());
+    geometry.setContentSeconds(model.lengthSeconds);
+    geometry.zoomToFit();
+
+#if defined(AF_SANITIZED_BUILD)
+    constexpr int frames = 3;
+#else
+    constexpr int frames = 30;
+#endif
+    REQUIRE(TimelinePainter::paint(g, layout, geometry, model, 1.0) == 200);
+    const auto perFrame =
+        medianFrameMs(frames, [&] { TimelinePainter::paint(g, layout, geometry, model, 1.0); });
+    UNSCOPED_INFO("Timeline frame with 200 waveforms: " << perFrame << " ms");
+#if defined(AF_SANITIZED_BUILD)
+    // Sanitizers slow painting by an unpredictable factor: only check that it completes.
+#elif defined(NDEBUG)
+    REQUIRE(perFrame < 16.0);
+#else
+    REQUIRE(perFrame < 500.0);
 #endif
 }

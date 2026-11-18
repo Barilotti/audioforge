@@ -85,12 +85,18 @@ void TimelineView::refresh()
         model_ = document != nullptr
                      ? TimelineModel::fromProject(document->project, document->event)
                      : TimelineModel{};
+        model_.updateAssets(playback_.cache());
         geometry_.setContentSeconds(model_.lengthSeconds);
         geometry_.zoomToFit();
         fitted_ = document != nullptr;
         layout_.verticalScroll = 0;
         shownPlayhead_.reset();
         updateScrollBars();
+        repaint();
+    }
+    if (model_.waitingForAssets() && ++assetPolls_ % 6 == 0 &&
+        model_.updateAssets(playback_.cache()))
+    {
         repaint();
     }
 
