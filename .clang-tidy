@@ -18,6 +18,7 @@ Checks: >
   -modernize-use-trailing-return-type,
   -modernize-use-nodiscard,
   performance-*,
+  -performance-enum-size,
   readability-braces-around-statements,
   readability-const-return-type,
   readability-container-size-empty,

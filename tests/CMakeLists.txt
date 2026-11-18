@@ -1,6 +1,10 @@
 include(Catch)
 
 add_executable(af_unit_tests
+    unit/core/LogTests.cpp
+    unit/core/ResultTests.cpp
+    unit/core/TimeTicksTests.cpp
+    unit/core/UuidTests.cpp
     unit/core/VersionTests.cpp)
 target_link_libraries(af_unit_tests PRIVATE AudioForge::core Catch2::Catch2WithMain)
 af_set_warnings(af_unit_tests)

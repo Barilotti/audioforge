@@ -4,6 +4,11 @@
 # Core: ids, time, Result/Error, logging, real-time primitives. No public JUCE types.
 af_add_module(core
     SOURCES
+        core/Log.cpp
+        core/RealtimeThread.cpp
+        core/Result.cpp
+        core/TimeTicks.cpp
+        core/Uuid.cpp
         core/Version.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/generated/core/BuildInfo.cpp"
     PRIVATE_DEPS AudioForge::juce)
