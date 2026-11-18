@@ -1,0 +1,17 @@
+# Build trees
+/build/
+/out/
+/cmake-build-*/
+
+# Local CMake overrides
+CMakeUserPresets.json
+
+# IDEs
+/.vs/
+/.vscode/
+/.idea/
+*.user
+
+# Tools
+/.cache/
+compile_commands.json
