@@ -22,6 +22,8 @@ public:
         setVisible(true);
     }
 
+    ~MainWindow() override = default;
+
     void closeButtonPressed() override
     {
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
