@@ -8,3 +8,12 @@ if(AF_ENABLE_RTSAN)
     add_compile_options(-fsanitize=realtime)
     add_link_options(-fsanitize=realtime)
 endif()
+
+# ThreadSanitizer checks the lock-free primitives and the thread hand-over code for data races.
+if(AF_ENABLE_TSAN)
+    if(MSVC)
+        message(FATAL_ERROR "AF_ENABLE_TSAN is not supported with MSVC")
+    endif()
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
+endif()

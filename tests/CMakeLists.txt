@@ -4,6 +4,9 @@ add_executable(af_unit_tests
     unit/core/LogTests.cpp
     unit/core/PluralRulesTests.cpp
     unit/core/ResultTests.cpp
+    unit/core/rt/MailboxTests.cpp
+    unit/core/rt/ParameterBankTests.cpp
+    unit/core/rt/SpscQueueTests.cpp
     unit/core/TimeTicksTests.cpp
     unit/core/UuidTests.cpp
     unit/core/VersionTests.cpp)

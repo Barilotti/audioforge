@@ -14,6 +14,7 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -misc-include-cleaner,
   -misc-no-recursion,
+  -misc-const-correctness,
   modernize-*,
   -modernize-use-trailing-return-type,
   -modernize-use-nodiscard,
