@@ -1,0 +1,4 @@
+# Catch2 test macros expand to static functions.
+InheritParentConfig: true
+Checks: >
+  -misc-use-anonymous-namespace

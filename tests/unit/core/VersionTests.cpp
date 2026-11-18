@@ -13,9 +13,13 @@ TEST_CASE("Version string has the form major.minor.patch", "[core][version]")
     for (const char c : version)
     {
         if (c == '.')
+        {
             ++dots;
+        }
         else
+        {
             REQUIRE((c >= '0' && c <= '9'));
+        }
     }
     REQUIRE(dots == 2);
 }
