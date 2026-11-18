@@ -31,6 +31,16 @@ if(AF_BUILD_TESTS)
     list(APPEND CMAKE_MODULE_PATH "${Catch2_SOURCE_DIR}/extras")
 endif()
 
+if(AF_BUILD_BENCHMARKS)
+    CPMAddPackage(
+        NAME benchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG v1.9.1
+        GIT_SHALLOW TRUE
+        OPTIONS "BENCHMARK_ENABLE_TESTING OFF" "BENCHMARK_ENABLE_INSTALL OFF"
+                "BENCHMARK_ENABLE_GTEST_TESTS OFF" "BENCHMARK_ENABLE_WERROR OFF")
+endif()
+
 # All JUCE modules are compiled exactly once, into af_juce. AudioForge targets link it
 # instead of the juce:: interface targets, which would otherwise compile JUCE sources into
 # every target that uses them.

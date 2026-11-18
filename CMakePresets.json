@@ -43,7 +43,8 @@
       "displayName": "Linux Clang Release",
       "inherits": "linux-base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AF_BUILD_BENCHMARKS": "ON"
       }
     },
     {
@@ -86,6 +87,9 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "AF_BUILD_BENCHMARKS": "ON"
       }
     }
   ],

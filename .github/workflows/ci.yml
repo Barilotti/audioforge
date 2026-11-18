@@ -53,6 +53,20 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
+      - name: Benchmarks (regression check against benchmarks/baseline)
+        if: matrix.preset == 'linux-clang-release'
+        run: |
+          build/${{ matrix.preset }}/benchmarks/af_benchmarks --benchmark_repetitions=5 \
+            --benchmark_report_aggregates_only=true \
+            --benchmark_out=benchmarks.json --benchmark_out_format=json
+          python3 benchmarks/check_regression.py benchmarks.json benchmarks/baseline/linux-ci.json
+      - name: Upload benchmark report
+        if: always() && matrix.preset == 'linux-clang-release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-linux
+          path: benchmarks.json
+          if-no-files-found: ignore
       - name: Static analysis (clang-tidy)
         if: matrix.preset == 'linux-clang-debug'
         run: |
@@ -127,6 +141,18 @@ jobs:
         run: cmake --build --preset windows-msvc-${{ matrix.config }} -- /m
       - name: Test
         run: ctest --preset windows-msvc-${{ matrix.config }}
+      - name: Benchmarks (report only; the gate runs on Linux)
+        if: matrix.config == 'release'
+        run: |
+          build/windows-msvc/benchmarks/RelWithDebInfo/af_benchmarks.exe --benchmark_repetitions=3 --benchmark_report_aggregates_only=true --benchmark_out=benchmarks.json --benchmark_out_format=json
+          python benchmarks/check_regression.py benchmarks.json benchmarks/baseline/linux-ci.json --tolerance 100
+      - name: Upload benchmark report
+        if: always() && matrix.config == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-windows
+          path: benchmarks.json
+          if-no-files-found: ignore
       - name: Build installer
         if: matrix.config == 'release'
         shell: pwsh
