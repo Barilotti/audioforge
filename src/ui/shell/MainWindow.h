@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/AppPaths.h"
+#include "app/DeviceService.h"
 #include "ui/shell/ShellComponent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -11,11 +12,12 @@ namespace af::ui
 /// The application's main window: menu bar, command handling and the panel shell.
 class MainWindow final : public juce::DocumentWindow,
                          public juce::ApplicationCommandTarget,
-                         private juce::MenuBarModel
+                         private juce::MenuBarModel,
+                         private app::DeviceService::Listener
 {
 public:
     MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands,
-               app::AppPaths paths);
+               app::AppPaths paths, app::DeviceService& devices);
     ~MainWindow() override;
 
     [[nodiscard]] ShellComponent& shell() noexcept { return *shell_; }
@@ -35,8 +37,12 @@ private:
     juce::PopupMenu getMenuForIndex(int topLevelMenuIndex, const juce::String& menuName) override;
     void menuItemSelected(int menuItemId, int topLevelMenuIndex) override;
 
+    // DeviceService::Listener
+    void deviceEvent(const app::DeviceEvent& event) override;
+
     juce::ApplicationCommandManager& commands_;
     app::AppPaths paths_;
+    app::DeviceService& devices_;
     ShellComponent* shell_ = nullptr; // owned by the window as its content component
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
