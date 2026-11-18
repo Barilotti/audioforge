@@ -45,6 +45,12 @@ public:
     static void paintPlayhead(juce::Graphics& g, const TimelineLayout& layout,
                               const TimelineGeometry& geometry, double seconds);
 
+    /// Draws the clip's waveform into `area` (screen pixels), one column per pixel, each
+    /// channel in its own band. `laneX` is the screen x of timeline x = 0.
+    static void paintWaveform(juce::Graphics& g, juce::Rectangle<float> area,
+                              const TimelineClip& clip, const TimelineGeometry& geometry,
+                              int laneX);
+
     /// Ruler label for a time, with as many decimals as the step needs.
     [[nodiscard]] static juce::String formatRulerTime(double seconds, double step);
 };

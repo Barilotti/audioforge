@@ -50,6 +50,7 @@ private:
     TimelineModel model_;
     std::uint64_t revision_ = 0;
     bool fitted_ = false;
+    unsigned assetPolls_ = 0;
     std::optional<double> shownPlayhead_;
     juce::ScrollBar horizontal_{false};
     juce::ScrollBar vertical_{true};
