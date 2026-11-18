@@ -88,6 +88,14 @@ std::unique_ptr<RenderGraph> GraphCompiler::compile(const model::Project& projec
                 {
                     continue;
                 }
+                if (asset->info.sampleRate > 0 && clip->sourceLengthFrames() > 0)
+                {
+                    const auto start = core::ticksToFramesNearest(clip->position, spec.sampleRate);
+                    contents.endFrame = std::max(
+                        contents.endFrame,
+                        start + convertLengthCeil(clip->sourceLengthFrames(),
+                                                  asset->info.sampleRate, spec.sampleRate));
+                }
                 auto audio = cache_.acquire(asset->id.uuid);
                 if (!audio)
                 {
@@ -124,6 +132,7 @@ std::unique_ptr<RenderGraph> GraphCompiler::compile(const model::Project& projec
                 {
                     voice.kernel = kernelFor(voice.sourceRate, voice.renderRate);
                 }
+                contents.endFrame = std::max(contents.endFrame, voice.endFrame());
                 voice.audio = std::move(audio);
                 allMono = allMono && voice.sourceChannels == 1;
                 node.clips.push_back(std::move(voice));

@@ -153,6 +153,7 @@ void DeviceService::refresh()
 {
     saveSettingsIfChanged();
     checkDevices();
+    transport_.pump();
 }
 
 void DeviceService::checkDevices()
@@ -211,7 +212,7 @@ void DeviceService::checkDevices()
     if (!nowOnPreferred && !lost_)
     {
         lost_ = true;
-        engine_.setPlaying(false);
+        transport_.pause();
         aflog::warning("Audio device '{}' is not available; {}",
                        preferredName.isNotEmpty() ? str(preferredName) : std::string{"(default)"},
                        device != nullptr ? "using '" + str(device->getName()) + "' instead"
@@ -283,6 +284,7 @@ void DeviceService::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
 void DeviceService::timerCallback()
 {
     engine_.collectRetired();
+    transport_.pump();
     if (++ticks_ >= checkEveryTicks)
     {
         ticks_ = 0;

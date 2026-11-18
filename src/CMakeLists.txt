@@ -44,6 +44,7 @@ af_add_module(assets
 af_add_module(engine
     SOURCES
         engine/AudioEngine.cpp
+        engine/MasterMeter.cpp
         engine/GraphCompiler.cpp
         engine/RenderGraph.cpp
     PUBLIC_DEPS AudioForge::model AudioForge::dsp AudioForge::assets)
@@ -60,7 +61,9 @@ af_add_module(app
         app/AppPaths.cpp
         app/CrashReporting.cpp
         app/DeviceService.cpp
+        app/Playback.cpp
         app/TestTone.cpp
+        app/Transport.cpp
     PUBLIC_DEPS
         AudioForge::model
         AudioForge::serialization
@@ -76,6 +79,8 @@ endif()
 af_add_module(ui
     SOURCES
         ui/settings/AudioSettingsComponent.cpp
+        ui/transport/TransportBar.cpp
+        ui/widgets/LevelMeter.cpp
         ui/shell/AboutComponent.cpp
         ui/shell/MainWindow.cpp
         ui/shell/Panel.cpp

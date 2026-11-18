@@ -26,6 +26,9 @@ struct Theme
         juce::Colour controlOutline{0xff3a4048};
         juce::Colour selection{0xff3d5a80};
         juce::Colour error{0xffe05a4f};
+        juce::Colour meterNormal{0xff4caf72};
+        juce::Colour meterWarning{0xffe0c040};
+        juce::Colour meterClip{0xffe05a4f};
     } colours;
 
     struct Metrics

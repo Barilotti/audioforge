@@ -1,7 +1,4 @@
-#include "FakeAudioDevices.h"
-#include "app/DeviceService.h"
-#include "app/TestTone.h"
-#include "core/Uuid.h"
+#include "AppTestSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,124 +10,8 @@
 
 using namespace af;
 using af::app::DeviceEvent;
-using af::app::DeviceService;
-using af::test::FakeDevice;
-using af::test::FakeDeviceType;
-using af::test::FakeWorld;
-
-namespace
-{
-
-class TempSettings
-{
-public:
-    TempSettings()
-        : dir_(std::filesystem::temp_directory_path() /
-               ("af-app-test-" + core::Uuid::generate().toString()))
-    {
-        std::filesystem::create_directories(dir_);
-    }
-    ~TempSettings()
-    {
-        std::error_code ec;
-        std::filesystem::remove_all(dir_, ec);
-    }
-    TempSettings(const TempSettings&) = delete;
-    TempSettings& operator=(const TempSettings&) = delete;
-    TempSettings(TempSettings&&) = delete;
-    TempSettings& operator=(TempSettings&&) = delete;
-
-    [[nodiscard]] std::filesystem::path file() const { return dir_ / "AudioDevice.xml"; }
-
-    [[nodiscard]] std::string contents() const
-    {
-        std::ifstream in(file());
-        return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-    }
-
-private:
-    std::filesystem::path dir_;
-};
-
-struct Events final : DeviceService::Listener
-{
-    std::vector<DeviceEvent> received;
-    void deviceEvent(const DeviceEvent& event) override { received.push_back(event); }
-
-    [[nodiscard]] int count(DeviceEvent::Kind kind) const
-    {
-        int n = 0;
-        for (const auto& e : received)
-        {
-            n += e.kind == kind ? 1 : 0;
-        }
-        return n;
-    }
-};
-
-/// A DeviceService on fake devices, with its listener attached before initialise().
-struct Harness
-{
-    FakeWorld world;
-    FakeDeviceType* type = nullptr;
-    Events events;
-    std::unique_ptr<DeviceService> service;
-
-    explicit Harness(const std::filesystem::path& settings,
-                     juce::StringArray devices = {"Fake A", "Fake B"})
-    {
-        world.devices = std::move(devices);
-        DeviceService::Options options;
-        options.settingsFile = settings;
-        options.timerHz = 0; // tests call refresh() themselves
-        auto fake = std::make_unique<FakeDeviceType>(world);
-        type = fake.get();
-        options.deviceTypes.push_back(std::move(fake));
-        service = std::make_unique<DeviceService>(std::move(options));
-        service->addListener(&events);
-        service->initialise();
-    }
-
-    ~Harness() { service->removeListener(&events); }
-
-    Harness(const Harness&) = delete;
-    Harness& operator=(const Harness&) = delete;
-    Harness(Harness&&) = delete;
-    Harness& operator=(Harness&&) = delete;
-
-    [[nodiscard]] FakeDevice* device() const
-    {
-        return dynamic_cast<FakeDevice*>(service->deviceManager().getCurrentAudioDevice());
-    }
-
-    void choose(const juce::String& name, double rate, int buffer) const
-    {
-        auto setup = service->deviceManager().getAudioDeviceSetup();
-        setup.outputDeviceName = name;
-        setup.sampleRate = rate;
-        setup.bufferSize = buffer;
-        REQUIRE(service->deviceManager()
-                    .setAudioDeviceSetup(setup, true)
-                    .isEmpty()); // as the dialog does
-        service->refresh();
-    }
-
-    void unplug(const juce::String& name)
-    {
-        world.devices.removeString(name);
-        type->devicesChanged();
-        service->refresh();
-    }
-
-    void plugIn(const juce::String& name)
-    {
-        world.devices.add(name);
-        type->devicesChanged();
-        service->refresh();
-    }
-};
-
-} // namespace
+using af::test::Harness;
+using af::test::TempSettings;
 
 TEST_CASE("The default device opens and plays the engine output", "[app][devices]")
 {
@@ -148,12 +29,12 @@ TEST_CASE("The default device opens and plays the engine output", "[app][devices
     REQUIRE(spec->maxBlockFrames == status.bufferSize);
 
     REQUIRE(h.device()->runBlock() == 0.0f); // nothing published yet: silence
-    app::TestTone tone{*h.service};
-    tone.start();
+    h.playback->setTestTone(true);
     h.device()->runBlock();
     REQUIRE(h.device()->runBlock() > 0.05f);
     REQUIRE(h.service->engine().status().appliedGeneration > 0);
-    tone.stop();
+    REQUIRE(h.service->engine().status().playing);
+    h.playback->setTestTone(false);
 }
 
 TEST_CASE("The user's device choice is saved and restored", "[app][devices]")
@@ -189,8 +70,7 @@ TEST_CASE("Changing rate or buffer while playing recompiles and keeps playing", 
 {
     const TempSettings settings;
     Harness h{settings.file()};
-    app::TestTone tone{*h.service};
-    tone.start();
+    h.playback->setTestTone(true);
     REQUIRE(h.device()->runBlock() >= 0.0f);
 
     for (const auto& [rate, buffer] :
@@ -203,7 +83,8 @@ TEST_CASE("Changing rate or buffer while playing recompiles and keeps playing", 
         REQUIRE(h.service->engine().status().rejectedGraphs == 0);
         h.device()->runBlock();
         REQUIRE(h.device()->runBlock() > 0.05f); // the tone was recompiled for the new format
-        REQUIRE(tone.isPlaying());
+        REQUIRE(h.playback->status().testTone);
+        REQUIRE(h.service->transport().isPlaying());
     }
 }
 
@@ -213,21 +94,21 @@ TEST_CASE("Unplugging the chosen device stops playback; plugging it back reopens
     const TempSettings settings;
     Harness h{settings.file()};
     h.choose("Fake B", 48'000.0, 256);
-    app::TestTone tone{*h.service};
-    tone.start();
+    h.playback->setTestTone(true);
     h.device()->runBlock();
     REQUIRE(h.device()->runBlock() > 0.05f);
 
     h.unplug("Fake B");
     REQUIRE(h.events.count(DeviceEvent::Kind::deviceLost) == 1);
-    REQUIRE_FALSE(h.service->engine().status().playing);
-    REQUIRE_FALSE(tone.isPlaying());
+    REQUIRE_FALSE(h.service->transport().isPlaying());
+    REQUIRE_FALSE(h.playback->status().testTone);
     auto status = h.service->status();
     REQUIRE(status.open);
     REQUIRE(status.deviceName == "Fake A"); // JUCE opened a fallback
     REQUIRE(status.usingFallback);
     REQUIRE(status.preferredName == "Fake B");
     REQUIRE(h.device()->runBlock() == 0.0f);
+    REQUIRE_FALSE(h.service->engine().status().playing); // the pause reached the audio thread
     REQUIRE(settings.contents().find("Fake B") != std::string::npos); // the choice is kept
 
     h.plugIn("Fake B");
@@ -241,15 +122,15 @@ TEST_CASE("Losing every device leaves the application running silently", "[app][
 {
     const TempSettings settings;
     Harness h{settings.file(), {"Fake A"}};
-    app::TestTone tone{*h.service};
-    tone.start();
+    h.playback->setTestTone(true);
 
     h.unplug("Fake A");
     REQUIRE(h.events.count(DeviceEvent::Kind::noDevice) == 1);
     REQUIRE_FALSE(h.service->status().open);
     REQUIRE_FALSE(h.service->renderSpec().has_value());
     REQUIRE(h.service->engine().status().appliedGeneration == 0); // graphs were taken back
-    REQUIRE_FALSE(tone.isPlaying());
+    REQUIRE_FALSE(h.service->transport().isPlaying());
+    REQUIRE_FALSE(h.playback->status().testTone);
 
     h.plugIn("Fake A");
     REQUIRE(h.service->status().open);
@@ -262,7 +143,7 @@ TEST_CASE("Starting without any device works", "[app][devices]")
     Harness h{settings.file(), {}};
     REQUIRE_FALSE(h.service->status().open);
     REQUIRE(h.events.count(DeviceEvent::Kind::noDevice) == 1);
-    app::TestTone tone{*h.service};
-    tone.start(); // nothing to play on, must not crash
-    tone.stop();
+    h.playback->setTestTone(true); // nothing to play on, must not crash
+    h.playback->refresh();
+    h.playback->setTestTone(false);
 }

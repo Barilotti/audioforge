@@ -70,6 +70,9 @@ public:
         std::vector<LayerNode> layers;
         float masterGain = 1.0f;
         bool needsCrossfade = false;
+        /// End of the last clip, including clips whose asset is still decoding: playback stops
+        /// here.
+        core::FrameCount endFrame = 0;
         std::vector<assets::AssetKey>
             pendingAssets; ///< Clips skipped because the asset is not ready.
     };
@@ -79,6 +82,7 @@ public:
     [[nodiscard]] const RenderSpec& spec() const noexcept { return spec_; }
     [[nodiscard]] std::uint64_t generation() const noexcept { return generation_; }
     [[nodiscard]] bool needsCrossfade() const noexcept { return contents_.needsCrossfade; }
+    [[nodiscard]] core::FrameCount endFrame() const noexcept { return contents_.endFrame; }
     [[nodiscard]] const std::vector<assets::AssetKey>& pendingAssets() const noexcept
     {
         return contents_.pendingAssets;

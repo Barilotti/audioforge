@@ -4,6 +4,7 @@
 
 - [Архитектура и план Phase 1 (v0.2, согласована 18.11.2026)](architecture/architecture-v0.2.md)
 - [Architecture Decision Records](adr/) — решения, их контекст и альтернативы. Новое решение оформляется по шаблону [`0000-template.md`](adr/0000-template.md) в том же PR, что и код.
+- [Ручная проверка этапа S1 на Windows](testing/manual-checklist-s1.md) — чек-лист, по которому этап S1 принимается перед слиянием.
 - [Решения перед публичным релизом](release/legal-checklist.md) — лицензии JUCE и ASIO SDK, подпись кода и другие юридические вопросы.
 
 | ADR | Тема |
@@ -22,3 +23,4 @@
 | [0012](adr/0012-wav-decoding.md) | Декодирование WAV и AudioBufferCache |
 | [0013](adr/0013-engine-graph.md) | Граф рендеринга, голос клипа и передача графа |
 | [0014](adr/0014-audio-devices.md) | Аудиоустройства, выбор и потеря устройства |
+| [0015](adr/0015-transport-metering.md) | Транспорт, импорт файла и мастер-метр |

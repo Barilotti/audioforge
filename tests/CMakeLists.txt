@@ -15,6 +15,7 @@ add_executable(af_unit_tests
     unit/dsp/DspTests.cpp
     unit/engine/AudioEngineTests.cpp
     unit/engine/RenderGraphTests.cpp
+    unit/engine/TransportMeterTests.cpp
     unit/model/ModelTests.cpp
     unit/model/ValidationTests.cpp)
 target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model AudioForge::assets AudioForge::engine
@@ -31,8 +32,11 @@ catch_discover_tests(af_unit_tests DISCOVERY_MODE PRE_TEST)
 # Tests of JUCE-based services (app module) on fake audio devices.
 add_executable(af_app_tests
     app/AppTestMain.cpp
-    app/DeviceServiceTests.cpp)
+    app/DeviceServiceTests.cpp
+    app/PlaybackTests.cpp
+    app/TransportTests.cpp)
 target_link_libraries(af_app_tests PRIVATE AudioForge::app Catch2::Catch2)
+target_compile_definitions(af_app_tests PRIVATE AF_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 af_set_warnings(af_app_tests)
 set_target_properties(af_app_tests PROPERTIES FOLDER "Tests")
 catch_discover_tests(af_app_tests DISCOVERY_MODE PRE_TEST TEST_PREFIX "app.")

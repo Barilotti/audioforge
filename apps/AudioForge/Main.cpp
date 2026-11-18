@@ -1,6 +1,8 @@
 #include "app/AppPaths.h"
 #include "app/CrashReporting.h"
 #include "app/DeviceService.h"
+#include "app/Playback.h"
+#include "assets/AudioBufferCache.h"
 #include "core/Log.h"
 #include "core/Version.h"
 #include "ui/shell/MainWindow.h"
@@ -43,9 +45,16 @@ public:
         devices_ = std::make_unique<af::app::DeviceService>(std::move(deviceOptions));
         devices_->initialise();
 
+        af::assets::AudioBufferCache::Options cacheOptions;
+        cacheOptions.budget = af::assets::MemoryBudget::defaultsFor(
+            af::assets::ISystemMemory::host()->physicalBytes());
+        cacheOptions.decoders = af::assets::DecoderRegistry::withBuiltInDecoders();
+        cache_ = std::make_unique<af::assets::AudioBufferCache>(std::move(cacheOptions));
+        playback_ = std::make_unique<af::app::Playback>(*devices_, *cache_);
+
         juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
-        mainWindow_ =
-            std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths, *devices_);
+        mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths,
+                                                           *devices_, *playback_);
         aflog::info("Main window opened");
 
         // CI start-up/shut-down check: open the main window, then quit through the normal path.
@@ -60,7 +69,9 @@ public:
     {
         // Reverse order of creation (architecture section 4.2, application shutdown).
         mainWindow_.reset();
+        playback_.reset();
         devices_.reset(); // closes the device: the audio callback stops, graphs are reclaimed
+        cache_.reset();   // after the device: retired graphs no longer hold its buffers
         juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
         aflog::info("AudioForge shut down normally");
         aflog::shutdown();
@@ -98,6 +109,8 @@ private:
     af::ui::LookAndFeel lookAndFeel_;
     juce::ApplicationCommandManager commands_;
     std::unique_ptr<af::app::DeviceService> devices_;
+    std::unique_ptr<af::assets::AudioBufferCache> cache_;
+    std::unique_ptr<af::app::Playback> playback_;
     std::unique_ptr<af::ui::MainWindow> mainWindow_;
 };
 

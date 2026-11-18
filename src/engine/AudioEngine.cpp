@@ -21,6 +21,7 @@ void AudioEngine::prepare(core::SampleRate sampleRate, int maxBlockFrames)
     mainRight_.assign(size, 0.0f);
     oldLeft_.assign(size, 0.0f);
     oldRight_.assign(size, 0.0f);
+    meter_.prepare(sampleRate);
 }
 
 void AudioEngine::publish(std::unique_ptr<RenderGraph> graph)
@@ -44,16 +45,21 @@ void AudioEngine::deviceStopped()
     mailbox_.reclaim().reset();
     retired_.collect();
     appliedGeneration_.store(0, std::memory_order_release);
+    publishedEnd_.store(0, std::memory_order_release);
 }
 
-void AudioEngine::setPlaying(bool playing) noexcept
+bool AudioEngine::transport(TransportCommand command) noexcept
 {
-    playing_.store(playing, std::memory_order_release);
+    if (command.kind == TransportCommand::Kind::seek)
+    {
+        command.frame = std::max<core::FrameCount>(command.frame, 0);
+    }
+    return commands_.tryPush(command);
 }
 
-void AudioEngine::seek(core::FrameCount frame) noexcept
+bool AudioEngine::popEvent(EngineEvent& event) noexcept
 {
-    seekRequest_.store(std::max<core::FrameCount>(frame, 0), std::memory_order_release);
+    return events_.tryPop(event);
 }
 
 EngineStatus AudioEngine::status() const noexcept
@@ -61,10 +67,48 @@ EngineStatus AudioEngine::status() const noexcept
     EngineStatus s;
     s.appliedGeneration = appliedGeneration_.load(std::memory_order_acquire);
     s.position = publishedPosition_.load(std::memory_order_acquire);
-    s.playing = playing_.load(std::memory_order_acquire);
+    s.playing = publishedPlaying_.load(std::memory_order_acquire);
+    s.endFrame = publishedEnd_.load(std::memory_order_acquire);
+    s.appliedCommands = publishedApplied_.load(std::memory_order_acquire);
     s.deferredSwaps = deferredSwaps_.load(std::memory_order_relaxed);
     s.rejectedGraphs = rejectedGraphs_.load(std::memory_order_relaxed);
+    s.droppedEvents = droppedEvents_.load(std::memory_order_relaxed);
     return s;
+}
+
+void AudioEngine::applyCommands() noexcept
+{
+    TransportCommand command;
+    while (commands_.tryPop(command))
+    {
+        switch (command.kind)
+        {
+        case TransportCommand::Kind::play:
+            playing_ = true;
+            break;
+        case TransportCommand::Kind::pause:
+            playing_ = false;
+            break;
+        case TransportCommand::Kind::seek:
+            position_ = command.frame;
+            break;
+        }
+        ++applied_;
+    }
+}
+
+void AudioEngine::checkEnd() noexcept
+{
+    if (!playing_ || current_ == nullptr || position_ < current_->endFrame())
+    {
+        return;
+    }
+    playing_ = false;
+    EngineEvent event{EngineEvent::Kind::endReached, position_, applied_};
+    if (!events_.tryPush(event))
+    {
+        droppedEvents_.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 void AudioEngine::acquirePendingGraph() noexcept
@@ -92,7 +136,7 @@ void AudioEngine::acquirePendingGraph() noexcept
         return;
     }
 
-    if (current_ != nullptr && next->needsCrossfade() && playing_.load(std::memory_order_acquire))
+    if (current_ != nullptr && next->needsCrossfade() && playing_)
     {
         fadingOut_ = current_;
         crossfadePosition_ = 0;
@@ -103,12 +147,13 @@ void AudioEngine::acquirePendingGraph() noexcept
     }
     current_ = next;
     appliedGeneration_.store(next->generation(), std::memory_order_release);
+    publishedEnd_.store(next->endFrame(), std::memory_order_release);
 }
 
 void AudioEngine::renderInto(float* left, float* right, int frames) noexcept
 {
     const auto count = static_cast<std::size_t>(frames);
-    if (current_ == nullptr || !playing_.load(std::memory_order_acquire))
+    if (current_ == nullptr || !playing_)
     {
         if (fadingOut_ != nullptr && retired_.retire(fadingOut_))
         {
@@ -143,12 +188,7 @@ void AudioEngine::renderInto(float* left, float* right, int frames) noexcept
 
 void AudioEngine::process(float* const* outputs, int outputCount, int frames) noexcept
 {
-    const auto requested = seekRequest_.exchange(-1, std::memory_order_acq_rel);
-    if (requested >= 0)
-    {
-        position_ = requested;
-    }
-
+    applyCommands();
     acquirePendingGraph();
 
     // Render in pieces no longer than the prepared block size.
@@ -163,6 +203,7 @@ void AudioEngine::process(float* const* outputs, int outputCount, int frames) no
             break; // not prepared
         }
         renderInto(left, right, n);
+        meter_.measure(left, right, n);
 
         for (int ch = 0; ch < outputCount; ++ch)
         {
@@ -200,7 +241,10 @@ void AudioEngine::process(float* const* outputs, int outputCount, int frames) no
             }
         }
     }
+    checkEnd();
     publishedPosition_.store(position_, std::memory_order_release);
+    publishedPlaying_.store(playing_, std::memory_order_release);
+    publishedApplied_.store(applied_, std::memory_order_release);
 }
 
 } // namespace af::engine

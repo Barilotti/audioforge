@@ -45,6 +45,36 @@ ShellComponent::ShellComponent()
     addAndMakeVisible(bottom_);
 }
 
+juce::String ShellComponent::audioFilePatterns()
+{
+    return "*.wav;*.wave;*.bwf;*.rf64;*.bw64;*.w64";
+}
+
+bool ShellComponent::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    const auto patterns = juce::StringArray::fromTokens(audioFilePatterns(), ";", "");
+    for (const auto& path : files)
+    {
+        const juce::File file{path};
+        for (const auto& pattern : patterns)
+        {
+            if (file.getFileName().matchesWildcard(pattern, true))
+            {
+                return onAudioFileDropped != nullptr;
+            }
+        }
+    }
+    return false;
+}
+
+void ShellComponent::filesDropped(const juce::StringArray& files, int /*x*/, int /*y*/)
+{
+    if (!files.isEmpty() && onAudioFileDropped)
+    {
+        onAudioFileDropped(juce::File{files[0]}); // stage S1 plays one file
+    }
+}
+
 void ShellComponent::paint(juce::Graphics& g)
 {
     g.fillAll(Theme::current().colours.windowBackground);
