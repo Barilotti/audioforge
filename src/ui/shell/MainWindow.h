@@ -44,6 +44,7 @@ private:
     void deviceEvent(const app::DeviceEvent& event) override;
 
     void chooseAudioFile();
+    void importFiles(const juce::Array<juce::File>& files);
 
     juce::ApplicationCommandManager& commands_;
     app::AppPaths paths_;

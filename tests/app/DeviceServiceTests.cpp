@@ -83,7 +83,7 @@ TEST_CASE("Changing rate or buffer while playing recompiles and keeps playing", 
         REQUIRE(h.service->engine().status().rejectedGraphs == 0);
         h.device()->runBlock();
         REQUIRE(h.device()->runBlock() > 0.05f); // the tone was recompiled for the new format
-        REQUIRE(h.playback->status().testTone);
+        REQUIRE(h.playback->testToneOn());
         REQUIRE(h.service->transport().isPlaying());
     }
 }
@@ -101,7 +101,7 @@ TEST_CASE("Unplugging the chosen device stops playback; plugging it back reopens
     h.unplug("Fake B");
     REQUIRE(h.events.count(DeviceEvent::Kind::deviceLost) == 1);
     REQUIRE_FALSE(h.service->transport().isPlaying());
-    REQUIRE_FALSE(h.playback->status().testTone);
+    REQUIRE_FALSE(h.playback->testToneOn());
     auto status = h.service->status();
     REQUIRE(status.open);
     REQUIRE(status.deviceName == "Fake A"); // JUCE opened a fallback
@@ -130,7 +130,7 @@ TEST_CASE("Losing every device leaves the application running silently", "[app][
     REQUIRE_FALSE(h.service->renderSpec().has_value());
     REQUIRE(h.service->engine().status().appliedGeneration == 0); // graphs were taken back
     REQUIRE_FALSE(h.service->transport().isPlaying());
-    REQUIRE_FALSE(h.playback->status().testTone);
+    REQUIRE_FALSE(h.playback->testToneOn());
 
     h.plugIn("Fake A");
     REQUIRE(h.service->status().open);
