@@ -1,4 +1,7 @@
-# Catch2 test macros expand to static functions.
+# Catch2 test macros expand to static functions. Tests check optionals with REQUIRE and build
+# fixture paths in static objects, which these checks cannot see through.
 InheritParentConfig: true
 Checks: >
-  -misc-use-anonymous-namespace
+  -misc-use-anonymous-namespace,
+  -bugprone-unchecked-optional-access,
+  -cert-err58-cpp

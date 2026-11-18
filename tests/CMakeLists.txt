@@ -1,6 +1,8 @@
 include(Catch)
 
 add_executable(af_unit_tests
+    unit/assets/AudioBufferCacheTests.cpp
+    unit/assets/WavDecoderTests.cpp
     unit/core/LogTests.cpp
     unit/core/PluralRulesTests.cpp
     unit/core/ResultTests.cpp
@@ -12,7 +14,13 @@ add_executable(af_unit_tests
     unit/core/VersionTests.cpp
     unit/model/ModelTests.cpp
     unit/model/ValidationTests.cpp)
-target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model Catch2::Catch2WithMain)
+target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model AudioForge::assets
+                                            Catch2::Catch2WithMain)
+target_compile_definitions(af_unit_tests PRIVATE AF_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+if(NOT AF_ENABLE_TSAN AND NOT AF_ENABLE_RTSAN)
+    # Sanitizer allocators abort on absurd sizes instead of throwing std::bad_alloc.
+    target_compile_definitions(af_unit_tests PRIVATE AF_TEST_HUGE_ALLOCATIONS)
+endif()
 af_set_warnings(af_unit_tests)
 set_target_properties(af_unit_tests PROPERTIES FOLDER "Tests")
 catch_discover_tests(af_unit_tests DISCOVERY_MODE PRE_TEST)
