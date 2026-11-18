@@ -105,13 +105,44 @@ jobs:
         run: cmake --build --preset windows-msvc-${{ matrix.config }} -- /m
       - name: Test
         run: ctest --preset windows-msvc-${{ matrix.config }}
-      - name: Upload application
+      - name: Build installer
+        if: matrix.config == 'release'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          $version = (Select-String -Path CMakeLists.txt -Pattern '^\s+VERSION\s+(\S+)').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force -Path build/package | Out-Null
+          Copy-Item build/windows-msvc/apps/AudioForge/AudioForge_artefacts/RelWithDebInfo/AudioForge.exe build/package/
+          Copy-Item build/windows-msvc/apps/af-render/RelWithDebInfo/af-render.exe build/package/
+          & $iscc /Qp "/DAppVersion=$version" "/DSourceDir=$PWD\build\package" "/DOutputDir=$PWD\build\installer" installer\AudioForge.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installer (silent install, run, uninstall)
+        if: matrix.config == 'release'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem build/installer/*.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\AF-Test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+          $env:AUDIOFORGE_DATA_DIR = "$env:RUNNER_TEMP\af-installed"
+          $p = Start-Process C:\AF-Test\AudioForge.exe -ArgumentList '--smoke-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installed AudioForge failed: $($p.ExitCode)" }
+          & C:\AF-Test\af-render.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "Installed af-render failed" }
+          $p = Start-Process C:\AF-Test\unins000.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller failed: $($p.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Test-Path C:\AF-Test\AudioForge.exe) { throw "AudioForge.exe is still present after uninstall" }
+      - name: Upload application and installer
         if: matrix.config == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: AudioForge-windows-x64-${{ github.sha }}
           path: |
-            build/windows-msvc/apps/AudioForge/AudioForge_artefacts/RelWithDebInfo/AudioForge.exe
-            build/windows-msvc/apps/af-render/RelWithDebInfo/af-render.exe
+            build/installer/*.exe
+            build/package/*.exe
+            build/windows-msvc/apps/AudioForge/AudioForge_artefacts/RelWithDebInfo/AudioForge.pdb
           if-no-files-found: error
           retention-days: 30

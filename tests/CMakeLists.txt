@@ -24,19 +24,37 @@ set_tests_properties(apps.af_render_version PROPERTIES
 add_test(NAME apps.af_render_rejects_unknown_arguments COMMAND af-render --no-such-option)
 set_tests_properties(apps.af_render_rejects_unknown_arguments PROPERTIES WILL_FAIL TRUE)
 
-# Start-up and shut-down of the GUI application. On Linux it needs a display (xvfb-run).
-if(WIN32)
-    add_test(NAME apps.audioforge_starts_and_quits COMMAND AudioForge --smoke-test)
-else()
+# Start-up/shut-down and crash reporting of the GUI application. On Linux they need a display
+# (xvfb-run). AUDIOFORGE_DATA_DIR keeps logs and dumps out of the user's profile.
+set(af_gui_test_launcher "")
+set(af_can_run_gui ${WIN32})
+if(NOT WIN32)
     find_program(XVFB_RUN xvfb-run)
     if(XVFB_RUN)
-        add_test(NAME apps.audioforge_starts_and_quits
-            COMMAND "${XVFB_RUN}" -a $<TARGET_FILE:AudioForge> --smoke-test)
+        set(af_gui_test_launcher "${XVFB_RUN}")
+        set(af_can_run_gui TRUE)
     endif()
 endif()
-if(TEST apps.audioforge_starts_and_quits)
-    set_tests_properties(apps.audioforge_starts_and_quits PROPERTIES TIMEOUT 60
+
+if(af_can_run_gui)
+    if(af_gui_test_launcher)
+        add_test(NAME apps.audioforge_starts_and_quits
+            COMMAND "${af_gui_test_launcher}" -a $<TARGET_FILE:AudioForge> --smoke-test)
+    else()
+        add_test(NAME apps.audioforge_starts_and_quits COMMAND AudioForge --smoke-test)
+    endif()
+    set_tests_properties(apps.audioforge_starts_and_quits PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "AUDIOFORGE_DATA_DIR=${CMAKE_CURRENT_BINARY_DIR}/smoke-test-data"
         FAIL_REGULAR_EXPRESSION "Leaked objects detected|JUCE Assertion failure")
+
+    add_test(NAME apps.audioforge_crash_is_recorded
+        COMMAND "${CMAKE_COMMAND}"
+            -DAPP=$<TARGET_FILE:AudioForge>
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/crash-test-data
+            -DLAUNCHER=${af_gui_test_launcher}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/apps/CrashTest.cmake")
+    set_tests_properties(apps.audioforge_crash_is_recorded PROPERTIES TIMEOUT 90)
 endif()
 
 # RealtimeSanitizer canary: must abort when the sanitizer works.
