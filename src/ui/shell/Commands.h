@@ -13,6 +13,7 @@ enum CommandIds : juce::CommandID
     openLogsFolder = 0x2002,
     showAudioSettings = 0x2003,
     importAudio = 0x2004,
+    newProject = 0x2005,
 
     transportPlayStop = 0x2101,
     transportPlayPause = 0x2102,

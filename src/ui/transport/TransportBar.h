@@ -7,6 +7,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <vector>
 
 namespace af::ui
 {
@@ -28,6 +29,7 @@ public:
 
 private:
     void refresh();
+    void reportProblems(const std::vector<app::Playback::ImportProblem>& problems);
 
     app::DeviceService& devices_;
     app::Playback& playback_;
@@ -40,7 +42,6 @@ private:
     LevelMeter meter_;
     juce::VBlankAttachment vblank_;
     double lastRefresh_ = 0.0;
-    app::Playback::State lastState_ = app::Playback::State::empty;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportBar)
 };

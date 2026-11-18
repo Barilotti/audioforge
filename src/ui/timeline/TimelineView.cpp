@@ -45,7 +45,7 @@ void TimelineView::resized()
     layout_ = TimelineLayout::forArea(area);
     layout_.verticalScroll = scroll;
     geometry_.setWidth(layout_.lanes.getWidth());
-    if (!fitted_ && playback_.document() != nullptr)
+    if (!fitted_ && !model_.layers.empty())
     {
         geometry_.zoomToFit();
         fitted_ = true;
@@ -62,7 +62,7 @@ void TimelineView::paint(juce::Graphics& g)
 std::optional<double> TimelineView::playheadSeconds() const
 {
     const auto spec = devices_.renderSpec();
-    if (!spec || playback_.document() == nullptr || playback_.status().testTone)
+    if (!spec || model_.layers.empty() || playback_.testToneOn())
     {
         return std::nullopt;
     }
@@ -87,9 +87,11 @@ void TimelineView::refresh()
                      : TimelineModel{};
         model_.updateAssets(playback_.cache());
         geometry_.setContentSeconds(model_.lengthSeconds);
-        geometry_.zoomToFit();
-        fitted_ = document != nullptr;
-        layout_.verticalScroll = 0;
+        if (!fitted_ || model_.layers.empty())
+        {
+            geometry_.zoomToFit(); // first layers: show them all; later imports keep the view
+            fitted_ = !model_.layers.empty();
+        }
         shownPlayhead_.reset();
         updateScrollBars();
         repaint();

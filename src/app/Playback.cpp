@@ -18,12 +18,25 @@ std::string toUtf8(const std::filesystem::path& path)
     return {u8.begin(), u8.end()};
 }
 
+Playback::Document emptyDocument()
+{
+    model::Event event;
+    event.id = model::EventId::generate();
+    event.name = "Event 1";
+    Playback::Document document;
+    document.event = event.id;
+    document.project.id = model::ProjectId::generate();
+    document.project.events.push_back(model::makeNode(event));
+    return document;
+}
+
 } // namespace
 
 Playback::Playback(DeviceService& devices, assets::AudioBufferCache& cache, int timerHz)
     : devices_(devices)
     , cache_(cache)
     , compiler_(cache)
+    , document_(emptyDocument())
 {
     auto tone = makeTestTone(cache_);
     tone_ = {std::move(tone.project), tone.event};
@@ -41,20 +54,38 @@ Playback::~Playback()
     devices_.removeListener(this);
 }
 
-void Playback::importFile(const std::filesystem::path& file)
+void Playback::importFiles(const std::vector<std::filesystem::path>& files)
 {
-    if (loading_)
+    for (const auto& file : files)
     {
-        cache_.remove(loading_->uuid); // a newer import replaces the one still decoding
+        PendingImport import{model::AssetId::generate(), file};
+        core::log::info("Importing {}", toUtf8(file));
+        cache_.request(import.asset.uuid, file);
+        pending_.push_back(std::move(import));
     }
-    loading_ = model::AssetId::generate();
-    loadingPath_ = file;
-    status_.state = State::loading;
-    status_.loadingName = toUtf8(file.filename());
-    status_.error.clear();
-    status_.progress = 0.0f;
-    core::log::info("Importing {}", toUtf8(file));
-    cache_.request(loading_->uuid, file);
+}
+
+void Playback::clear()
+{
+    for (const auto& import : pending_)
+    {
+        cache_.remove(import.asset.uuid);
+    }
+    pending_.clear();
+    const auto old = documentAssets();
+    devices_.transport().stop();
+    devices_.transport().seek(0);
+    document_ = emptyDocument();
+    ++revision_;
+    updatePins();
+    if (!toneOn_)
+    {
+        publish();
+    }
+    for (const auto& asset : old)
+    {
+        cache_.remove(asset.uuid); // a retired graph may still hold a buffer: that is fine
+    }
 }
 
 void Playback::setTestTone(bool on)
@@ -67,7 +98,6 @@ void Playback::setTestTone(bool on)
     transport.stop();
     transport.seek(0);
     toneOn_ = on;
-    status_.testTone = on;
     publish();
     if (on)
     {
@@ -77,37 +107,100 @@ void Playback::setTestTone(bool on)
 
 Playback::Status Playback::status() const
 {
-    return status_;
+    Status status;
+    status.testTone = toneOn_;
+    const auto event = document_.project.findEvent(document_.event);
+    status.layerCount = event ? static_cast<int>(event->layers.size()) : 0;
+
+    float progress = 0.0f;
+    auto countLoading = [&](const model::AssetId& asset)
+    {
+        const auto s = cache_.status(asset.uuid);
+        if (s.state == assets::AssetState::decoding || s.state == assets::AssetState::unloaded)
+        {
+            ++status.loadingCount;
+            progress += s.progress;
+        }
+    };
+    for (const auto& import : pending_)
+    {
+        countLoading(import.asset);
+    }
+    for (const auto& asset : documentAssets())
+    {
+        countLoading(asset);
+    }
+    status.progress =
+        status.loadingCount > 0 ? progress / static_cast<float>(status.loadingCount) : 1.0f;
+    status.state = status.loadingCount > 0 ? State::loading
+                   : status.layerCount > 0 ? State::ready
+                                           : State::empty;
+
+    for (const auto& asset : document_.project.assets)
+    {
+        if (asset && asset->info.sampleRate > 0)
+        {
+            for (const auto& layer : event ? event->layers : std::vector<model::LayerPtr>{})
+            {
+                for (const auto& clip : layer->clips)
+                {
+                    if (clip->asset == asset->id)
+                    {
+                        status.lengthSeconds =
+                            std::max(status.lengthSeconds,
+                                     clip->position.toSecondsApprox() +
+                                         static_cast<double>(clip->sourceLengthFrames()) /
+                                             static_cast<double>(asset->info.sampleRate));
+                    }
+                }
+            }
+        }
+    }
+    return status;
+}
+
+std::vector<Playback::ImportProblem> Playback::takeProblems()
+{
+    return std::exchange(problems_, {});
 }
 
 void Playback::refresh()
 {
-    if (loading_)
+    // Add layers in import order: the head waits until its header is known.
+    bool added = false;
+    while (!pending_.empty())
     {
-        const auto id = *loading_;
-        const auto loaded = cache_.status(id.uuid);
-        switch (loaded.state)
+        const auto& head = pending_.front();
+        const auto loaded = cache_.status(head.asset.uuid);
+        if (loaded.state == assets::AssetState::failed)
         {
-        case assets::AssetState::ready:
-            finishImport(id, loaded);
-            break;
-        case assets::AssetState::failed:
-            status_.state = State::failed;
-            status_.error = loaded.error ? loaded.error->describe() : "unknown error";
-            core::log::warning("Import failed: {}", status_.error);
-            cache_.remove(id.uuid);
-            loading_.reset();
-            break;
-        case assets::AssetState::decoding:
-        case assets::AssetState::unloaded:
-        case assets::AssetState::evicted:
-            status_.progress = loaded.progress;
-            break;
+            const auto message = loaded.error ? loaded.error->describe() : "unknown error";
+            core::log::warning("Import failed: {}", message);
+            problems_.push_back({toUtf8(head.file.filename()), message, false});
+            cache_.remove(head.asset.uuid);
+            pending_.pop_front();
+            continue;
+        }
+        if (!loaded.info)
+        {
+            break; // header not read yet
+        }
+        addLayer(head, *loaded.info);
+        pending_.pop_front();
+        added = true;
+    }
+    if (added)
+    {
+        ++revision_;
+        updatePins();
+        if (!toneOn_)
+        {
+            publish();
         }
     }
 
-    if (!waitingFor_.empty() &&
-        std::all_of(waitingFor_.begin(), waitingFor_.end(), [this](const assets::AssetKey& key)
+    if (!toneOn_ && !waitingFor_.empty() &&
+        std::any_of(waitingFor_.begin(), waitingFor_.end(), [this](const assets::AssetKey& key)
                     { return cache_.status(key).state == assets::AssetState::ready; }))
     {
         publish();
@@ -120,64 +213,52 @@ void Playback::refresh()
     }
 }
 
-void Playback::finishImport(model::AssetId id, const assets::AssetStatus& loaded)
+void Playback::addLayer(const PendingImport& import, const assets::AudioFileInfo& info)
 {
-    const auto& audio = loaded.audio;
-    if (!audio)
-    {
-        return; // ready always carries the buffer; nothing to play otherwise
-    }
     model::AssetRef asset{
-        id, toUtf8(loadingPath_), {}, {audio->sampleRate(), audio->channels(), audio->frames()}};
+        import.asset, toUtf8(import.file), {}, {info.sampleRate, info.channels, info.frames}};
 
     model::Clip clip;
     clip.id = model::ClipId::generate();
     clip.asset = asset.id;
-    clip.sourceOutFrames = audio->frames();
+    clip.sourceOutFrames = info.frames;
 
-    const auto stem = toUtf8(loadingPath_.stem());
     model::Layer layer;
     layer.id = model::LayerId::generate();
-    layer.name = stem;
+    layer.name = toUtf8(import.file.stem());
     layer.clips.push_back(model::makeNode(clip));
 
-    model::Event event;
-    event.id = model::EventId::generate();
-    event.name = stem;
-    event.layers.push_back(model::makeNode(layer));
-
-    Source source;
-    source.event = event.id;
-    source.project.id = model::ProjectId::generate();
-    source.project.assets.push_back(model::makeNode(asset));
-    source.project.events.push_back(model::makeNode(event));
-
-    const auto previous = fileAsset_;
-    file_ = std::move(source);
-    ++revision_;
-    fileAsset_ = id;
-    loading_.reset();
-
-    status_.state = State::ready;
-    status_.fileName = status_.loadingName;
-    status_.progress = 1.0f;
-    status_.lengthSeconds =
-        static_cast<double>(audio->frames()) / static_cast<double>(audio->sampleRate());
-    status_.truncated = loaded.info && loaded.info->dataTruncated;
-    core::log::info("Imported {}: {} Hz, {} ch, {} frames", status_.fileName, audio->sampleRate(),
-                    audio->channels(), audio->frames());
-
-    updatePins();
-    if (!toneOn_)
+    auto& project = document_.project;
+    project.assets.push_back(model::makeNode(asset));
+    for (auto& event : project.events)
     {
-        devices_.transport().stop();
-        devices_.transport().seek(0);
-        publish();
+        if (event && event->id == document_.event)
+        {
+            auto edited = *event;
+            edited.layers.push_back(model::makeNode(layer));
+            event = model::makeNode(std::move(edited));
+        }
     }
-    if (previous)
+    core::log::info("Added layer {}: {} Hz, {} ch, {} frames", layer.name, info.sampleRate,
+                    info.channels, info.frames);
+    if (info.dataTruncated)
     {
-        cache_.remove(previous->uuid); // a retired graph may still hold the buffer: that is fine
+        problems_.push_back({toUtf8(import.file.filename()),
+                             "The file is truncated: only the frames present are used", true});
     }
+}
+
+std::vector<model::AssetId> Playback::documentAssets() const
+{
+    std::vector<model::AssetId> assets;
+    for (const auto& asset : document_.project.assets)
+    {
+        if (asset)
+        {
+            assets.push_back(asset->id);
+        }
+    }
+    return assets;
 }
 
 void Playback::publish()
@@ -188,9 +269,10 @@ void Playback::publish()
         waitingFor_.clear();
         return; // no device: compiled when one opens (formatChanged)
     }
-    static const Source nothing{};
-    const Source& source = toneOn_ ? tone_ : (file_ ? *file_ : nothing);
-    auto graph = compiler_.compile(source.project, source.event, *spec);
+    const Document& source = toneOn_ ? tone_ : document_;
+    engine::CompileOptions options;
+    options.needsCrossfade = devices_.transport().isPlaying(); // layers added while playing
+    auto graph = compiler_.compile(source.project, source.event, *spec, options);
     waitingFor_ = graph->pendingAssets();
     devices_.engine().publish(std::move(graph));
     devices_.engine().collectRetired();
@@ -199,11 +281,13 @@ void Playback::publish()
 void Playback::updatePins()
 {
     auto pinned = engine::GraphCompiler::referencedAssets(tone_.project, tone_.event);
-    if (file_)
+    for (const auto& asset : documentAssets())
     {
-        const auto fileAssets =
-            engine::GraphCompiler::referencedAssets(file_->project, file_->event);
-        pinned.insert(pinned.end(), fileAssets.begin(), fileAssets.end());
+        pinned.push_back(asset.uuid);
+    }
+    for (const auto& import : pending_)
+    {
+        pinned.push_back(import.asset.uuid);
     }
     cache_.setPinned(pinned);
 }

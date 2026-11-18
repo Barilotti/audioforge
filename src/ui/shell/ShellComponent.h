@@ -26,8 +26,8 @@ public:
     [[nodiscard]] Panel& rightPanel() noexcept { return right_; }
     [[nodiscard]] Panel& bottomPanel() noexcept { return bottom_; }
 
-    /// Called with an audio file dropped anywhere on the window.
-    std::function<void(const juce::File&)> onAudioFileDropped;
+    /// Called with the audio files dropped anywhere on the window, in their order.
+    std::function<void(const juce::Array<juce::File>&)> onAudioFilesDropped;
 
     // FileDragAndDropTarget
     bool isInterestedInFileDrag(const juce::StringArray& files) override;

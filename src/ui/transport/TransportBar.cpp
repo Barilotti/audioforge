@@ -108,6 +108,36 @@ void TransportBar::resized()
     file_.setBounds(bottom);
 }
 
+void TransportBar::reportProblems(const std::vector<app::Playback::ImportProblem>& problems)
+{
+    if (problems.empty())
+    {
+        return;
+    }
+    juce::String message;
+    bool anyFailed = false;
+    for (const auto& problem : problems)
+    {
+        if (!message.isEmpty())
+        {
+            message << "\n\n";
+        }
+        message << fromStd(problem.fileName) << "\n"
+                << (problem.imported ? TRANS("Imported with a warning:")
+                                     : TRANS("Cannot be imported:"))
+                << " " << fromStd(problem.message);
+        anyFailed = anyFailed || !problem.imported;
+    }
+    juce::AlertWindow::showAsync(
+        juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::WarningIcon)
+            .withTitle(anyFailed ? TRANS("Import failed") : TRANS("Import warning"))
+            .withMessage(message)
+            .withButton(TRANS("OK"))
+            .withAssociatedComponent(this),
+        nullptr);
+}
+
 void TransportBar::refresh()
 {
     const double now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
@@ -137,27 +167,17 @@ void TransportBar::refresh()
     position_.setText(positionText, juce::dontSendNotification);
 
     juce::String fileText;
-    juce::Colour fileColour = Theme::current().colours.textSecondary;
     switch (status.state)
     {
     case app::Playback::State::empty:
-        fileText = TRANS("No file. Use File > Import Audio... or drop a WAV file here.");
+        fileText = TRANS("No layers. Use File > Import Audio... or drop WAV files on the window.");
         break;
     case app::Playback::State::loading:
-        fileText << TRANS("Loading") << " " << fromStd(status.loadingName) << " ("
-                 << juce::roundToInt(status.progress * 100.0f) << "%)";
+        fileText << TRANS("Loading %1 file(s)").replace("%1", juce::String(status.loadingCount))
+                 << " (" << juce::roundToInt(status.progress * 100.0f) << "%)";
         break;
     case app::Playback::State::ready:
-        fileText = fromStd(status.fileName);
-        if (status.truncated)
-        {
-            fileText << "  " << TRANS("(the file is truncated: only the frames present play)");
-        }
-        break;
-    case app::Playback::State::failed:
-        fileText << TRANS("Cannot import") << " " << fromStd(status.loadingName) << ": "
-                 << fromStd(status.error);
-        fileColour = Theme::current().colours.error;
+        fileText << TRANS("%1 layer(s)").replace("%1", juce::String(status.layerCount));
         break;
     }
     if (!spec)
@@ -165,26 +185,7 @@ void TransportBar::refresh()
         fileText << "  " << TRANS("(no audio device)");
     }
     file_.setText(fileText, juce::dontSendNotification);
-    if (status.state == app::Playback::State::failed && lastState_ != status.state)
-    {
-        auto message =
-            TRANS("AudioForge cannot open \"%1\".").replace("%1", fromStd(status.loadingName));
-        message << "\n\n" << fromStd(status.error);
-        if (!status.fileName.empty())
-        {
-            message << "\n\n"
-                    << TRANS("The previous file stays loaded:") << " " << fromStd(status.fileName);
-        }
-        juce::AlertWindow::showAsync(juce::MessageBoxOptions()
-                                         .withIconType(juce::MessageBoxIconType::WarningIcon)
-                                         .withTitle(TRANS("Import failed"))
-                                         .withMessage(message)
-                                         .withButton(TRANS("OK"))
-                                         .withAssociatedComponent(this),
-                                     nullptr);
-    }
-    lastState_ = status.state;
-    file_.setColour(juce::Label::textColourId, fileColour);
+    reportProblems(playback_.takeProblems());
 
     juce::String loadText;
     if (spec)

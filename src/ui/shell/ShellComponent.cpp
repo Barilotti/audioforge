@@ -66,30 +66,42 @@ bool ShellComponent::isSupportedAudioFile(const juce::File& file)
 bool ShellComponent::isInterestedInFileDrag(const juce::StringArray& files)
 {
     // Every file is accepted so that an unsupported one gets an explanation, not silence.
-    return !files.isEmpty() && onAudioFileDropped != nullptr;
+    return !files.isEmpty() && onAudioFilesDropped != nullptr;
 }
 
 void ShellComponent::filesDropped(const juce::StringArray& files, int /*x*/, int /*y*/)
 {
+    juce::Array<juce::File> supported;
+    juce::StringArray unsupported;
     for (const auto& path : files)
     {
         const juce::File file{path};
         if (isSupportedAudioFile(file))
         {
-            onAudioFileDropped(file); // stage S1 plays one file: the first supported one
-            return;
+            supported.add(file);
+        }
+        else
+        {
+            unsupported.add(file.getFileName());
         }
     }
-    juce::AlertWindow::showAsync(
-        juce::MessageBoxOptions()
-            .withIconType(juce::MessageBoxIconType::InfoIcon)
-            .withTitle(TRANS("Unsupported file"))
-            .withMessage(TRANS("This version opens WAV files (WAV, BWF, RF64, BW64, Wave64). "
-                               "AIFF, FLAC and MP3 support is planned.") +
-                         "\n\n" + juce::File{files[0]}.getFileName())
-            .withButton(TRANS("OK"))
-            .withAssociatedComponent(this),
-        nullptr);
+    if (!supported.isEmpty())
+    {
+        onAudioFilesDropped(supported);
+    }
+    if (!unsupported.isEmpty())
+    {
+        juce::AlertWindow::showAsync(
+            juce::MessageBoxOptions()
+                .withIconType(juce::MessageBoxIconType::InfoIcon)
+                .withTitle(TRANS("Unsupported file"))
+                .withMessage(TRANS("This version opens WAV files (WAV, BWF, RF64, BW64, Wave64). "
+                                   "AIFF, FLAC and MP3 support is planned.") +
+                             "\n\n" + unsupported.joinIntoString("\n"))
+                .withButton(TRANS("OK"))
+                .withAssociatedComponent(this),
+            nullptr);
+    }
 }
 
 void ShellComponent::paint(juce::Graphics& g)

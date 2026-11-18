@@ -80,7 +80,7 @@ void AudioSettingsComponent::resized()
 void AudioSettingsComponent::timerCallback()
 {
     updateStatus();
-    const bool toneOn = playback_.status().testTone;
+    const bool toneOn = playback_.testToneOn();
     if (testToneButton_.getToggleState() != toneOn)
     {
         testToneButton_.setToggleState(toneOn,
