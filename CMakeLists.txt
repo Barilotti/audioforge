@@ -26,6 +26,13 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 if(MSVC)
     # Static C++ runtime: the installer does not need to ship the VC++ redistributable.
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    # RelWithDebInfo is the shipped configuration. CMake's default /Ob1 inlines only functions
+    # marked inline, which leaves JUCE's renderer and our DSP templates several times slower
+    # than in Release; /Ob2 inlines like Release and keeps the debug information.
+    foreach(lang C CXX)
+        string(REPLACE "/Ob1" "/Ob2" CMAKE_${lang}_FLAGS_RELWITHDEBINFO
+                       "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+    endforeach()
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
