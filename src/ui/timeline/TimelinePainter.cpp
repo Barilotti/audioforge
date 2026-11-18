@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace af::ui
 {
@@ -138,8 +139,10 @@ void TimelinePainter::paintWaveform(juce::Graphics& g, juce::Rectangle<float> ar
         return;
     }
 
-    juce::RectangleList<float> columns;
-    columns.ensureStorageAllocated((x1 - x0) * channels);
+    // Whole-pixel columns filled one by one: renderers fill integer rectangles on a fast path,
+    // while a RectangleList is first turned into an edge table (several times slower).
+    std::vector<juce::Rectangle<int>> columns;
+    columns.reserve(static_cast<std::size_t>(x1 - x0) * static_cast<std::size_t>(channels));
     for (int ch = 0; ch < channels; ++ch)
     {
         const float top = area.getY() + static_cast<float>(ch) * bandHeight;
@@ -156,14 +159,18 @@ void TimelinePainter::paintWaveform(juce::Graphics& g, juce::Rectangle<float> ar
             {
                 continue;
             }
-            const float yTop = centre - std::clamp(range->max, -1.0f, 1.0f) * scale;
-            const float yBottom = centre - std::clamp(range->min, -1.0f, 1.0f) * scale;
-            columns.addWithoutMerging(
-                {static_cast<float>(x), yTop, 1.0f, std::max(1.0f, yBottom - yTop)});
+            const auto yTop =
+                static_cast<int>(std::floor(centre - std::clamp(range->max, -1.0f, 1.0f) * scale));
+            const auto yBottom =
+                static_cast<int>(std::ceil(centre - std::clamp(range->min, -1.0f, 1.0f) * scale));
+            columns.emplace_back(x, yTop, 1, std::max(1, yBottom - yTop));
         }
     }
     g.setColour(colours.textPrimary.withAlpha(0.85f));
-    g.fillRectList(columns);
+    for (const auto& column : columns)
+    {
+        g.fillRect(column);
+    }
 }
 
 int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
@@ -199,8 +206,12 @@ int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
         {
             const juce::Graphics::ScopedSaveState state{g};
             g.reduceClipRegion(layout.lanes);
-            g.setColour(index % 2 == 0 ? colours.panelBackground
-                                       : colours.panelBackground.brighter(0.03f));
+            const auto rowColour =
+                index % 2 == 0 ? colours.panelBackground : colours.panelBackground.brighter(0.03f);
+            // Opaque clip colours: the body is painted over the outline (no stroked path).
+            const auto clipFill = rowColour.overlaidWith(colours.selection.withAlpha(0.55f));
+            const auto clipOutline = colours.selection.brighter(0.4f);
+            g.setColour(rowColour);
             g.fillRect(row);
             g.setColour(colours.border);
             g.fillRect(row.withTop(row.getBottom() - 1));
@@ -224,10 +235,12 @@ int TimelinePainter::paint(juce::Graphics& g, const TimelineLayout& layout,
                                            static_cast<float>(std::min(x1, row.getRight() + 4.0) -
                                                               std::max(x0, row.getX() - 4.0)),
                                            static_cast<float>(row.getHeight() - 7)};
-                g.setColour(colours.selection.withAlpha(0.55f));
+                // Outline: the rounded box; body: a whole-pixel rectangle 1 px inside it, which
+                // stays within the rounded corners (radius 3) and fills on the fast path.
+                g.setColour(clipOutline);
                 g.fillRoundedRectangle(box, theme.metrics.cornerRadius);
-                g.setColour(colours.selection.brighter(0.4f));
-                g.drawRoundedRectangle(box, theme.metrics.cornerRadius, 1.0f);
+                g.setColour(clipFill);
+                g.fillRect(box.reduced(1.0f).toNearestInt());
                 const auto visible = box.getIntersection(row.toFloat());
                 if (it->peaks)
                 {
