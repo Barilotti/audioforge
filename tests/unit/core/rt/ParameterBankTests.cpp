@@ -3,8 +3,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstdint>
-#include <map>
 #include <thread>
 
 using af::core::rt::ParameterBank;
@@ -21,9 +21,18 @@ TEST_CASE("ParameterBank coalesces changes to the latest value per slot", "[core
     bank.set(127, -1.0f);
     bank.set(128, 9.0f); // out of range: ignored
 
-    std::map<std::uint32_t, float> changes;
-    bank.consumeChanges([&](std::uint32_t slot, float value) { changes[slot] = value; });
-    REQUIRE(changes.size() == 3);
+    // consumeChanges is real-time code, so the callback must not allocate: fill a fixed array.
+    constexpr float untouched = -100.0f;
+    std::array<float, 128> changes{};
+    changes.fill(untouched);
+    int changeCount = 0;
+    bank.consumeChanges(
+        [&](std::uint32_t slot, float value)
+        {
+            changes[slot] = value;
+            ++changeCount;
+        });
+    REQUIRE(changeCount == 3);
     REQUIRE(changes[3] == 999.0f);
     REQUIRE(changes[70] == 0.5f);
     REQUIRE(changes[127] == -1.0f);
@@ -39,6 +48,7 @@ TEST_CASE("ParameterBank never loses the final value under concurrent writes", "
     ParameterBank<64> bank;
     constexpr int writes = 500'000;
     float seen = -1.0f;
+    bool wentBackwards = false;
     {
         std::jthread writer{[&bank]
                             {
@@ -49,14 +59,16 @@ TEST_CASE("ParameterBank never loses the final value under concurrent writes", "
                             }};
         while (seen < static_cast<float>(writes))
         {
+            // Real-time callback: record a regression instead of asserting inside it.
             bank.consumeChanges(
                 [&](std::uint32_t, float value)
                 {
-                    REQUIRE(value >= seen); // values only move forward
+                    wentBackwards = wentBackwards || value < seen;
                     seen = value;
                 });
         }
     }
+    REQUIRE_FALSE(wentBackwards); // values only move forward
     REQUIRE(seen == static_cast<float>(writes));
 }
 
