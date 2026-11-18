@@ -52,7 +52,7 @@ TEST_CASE("The newest published graph wins; older ones never reach the audio thr
     DcProject p{1.0f};
     engine::AudioEngine engine;
     engine.prepare(48'000, 512);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
 
     auto g1 = p.fixture.compile(spec);
     auto g2 = p.fixture.compile(spec);
@@ -109,7 +109,7 @@ TEST_CASE("Graphs compiled for another device format are rejected", "[engine][ha
     DcProject p{1.0f};
     engine::AudioEngine engine;
     engine.prepare(48'000, 512);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     Output out;
 
     engine.publish(p.fixture.compile({44'100, 512}));
@@ -129,7 +129,7 @@ TEST_CASE("Blocks longer than the prepared size are rendered in pieces", "[engin
     DcProject p{0.5f};
     engine::AudioEngine engine;
     engine.prepare(48'000, 256);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     engine.publish(p.fixture.compile({48'000, 256}));
     Output out;
     out.run(engine, 1000);
@@ -150,8 +150,8 @@ TEST_CASE("Stopped transport outputs silence and keeps the position; seek moves 
     REQUIRE(out.left[0] == 0.0f);
     REQUIRE(engine.status().position == 0);
 
-    engine.seek(1000);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::seek(1000)));
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     out.run(engine, 128);
     REQUIRE(engine.status().position == 1128);
     REQUIRE(out.left[0] == 1.0f);
@@ -166,7 +166,7 @@ TEST_CASE("Output channel mapping", "[engine][handover]")
     f.addClip(layer, asset, TimeTicks{}, 0, 100);
     engine::AudioEngine engine;
     engine.prepare(48'000, 64);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     engine.publish(f.compile({48'000, 64}));
 
     std::array<float, 8> mono{};
@@ -192,7 +192,7 @@ TEST_CASE("Structural swaps crossfade over 256 samples with equal power", "[engi
     DcProject quiet{0.0f};
     engine::AudioEngine engine;
     engine.prepare(48'000, 512);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     engine.publish(loud.fixture.compile(spec));
     Output out;
     out.run(engine, 64);
@@ -219,7 +219,7 @@ TEST_CASE("deviceStopped takes back every graph", "[engine][handover]")
     DcProject p{1.0f};
     engine::AudioEngine engine;
     engine.prepare(48'000, 512);
-    engine.setPlaying(true);
+    REQUIRE(engine.transport(engine::TransportCommand::play()));
     Output out;
     engine.publish(p.fixture.compile(spec));
     out.run(engine, 64);

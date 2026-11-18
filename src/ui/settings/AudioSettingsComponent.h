@@ -1,7 +1,7 @@
 #pragma once
 
 #include "app/DeviceService.h"
-#include "app/TestTone.h"
+#include "app/Playback.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -14,21 +14,22 @@ namespace af::ui
 class AudioSettingsComponent final : public juce::Component, private juce::Timer
 {
 public:
-    explicit AudioSettingsComponent(app::DeviceService& devices);
+    AudioSettingsComponent(app::DeviceService& devices, app::Playback& playback);
     ~AudioSettingsComponent() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
 
     /// Opens the dialog without blocking; only one instance at a time.
-    static void show(app::DeviceService& devices, juce::Component* centreAround);
+    static void show(app::DeviceService& devices, app::Playback& playback,
+                     juce::Component* centreAround);
 
 private:
     void timerCallback() override;
     void updateStatus();
 
     app::DeviceService& devices_;
-    app::TestTone testTone_;
+    app::Playback& playback_;
     juce::AudioDeviceSelectorComponent selector_;
     juce::TextButton testToneButton_;
     juce::Label status_;

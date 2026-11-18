@@ -4,6 +4,10 @@
 #include "ui/shell/AboutComponent.h"
 #include "ui/shell/Commands.h"
 #include "ui/theme/Theme.h"
+#include "ui/transport/TransportBar.h"
+
+#include <filesystem>
+#include <string>
 
 namespace af::ui
 {
@@ -13,22 +17,34 @@ namespace
 enum MenuIndex
 {
     fileMenu = 0,
-    optionsMenu = 1,
-    helpMenu = 2,
+    transportMenu = 1,
+    optionsMenu = 2,
+    helpMenu = 3,
 };
+
+std::filesystem::path toPath(const juce::File& file)
+{
+    const auto utf8 = file.getFullPathName().toStdString(); // JUCE converts to UTF-8
+    return std::filesystem::path{std::u8string{utf8.begin(), utf8.end()}};
+}
 } // namespace
 
 MainWindow::MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands,
-                       app::AppPaths paths, app::DeviceService& devices)
+                       app::AppPaths paths, app::DeviceService& devices, app::Playback& playback)
     : DocumentWindow(name, Theme::current().colours.windowBackground, DocumentWindow::allButtons)
     , commands_(commands)
     , paths_(std::move(paths))
     , devices_(devices)
+    , playback_(playback)
 {
     setUsingNativeTitleBar(true);
 
     auto shell = std::make_unique<ShellComponent>();
     shell_ = shell.get();
+    shell_->bottomPanel().setContent(
+        std::make_unique<TransportBar>(devices_, playback_, [this] { chooseAudioFile(); }));
+    shell_->onAudioFileDropped = [this](const juce::File& file)
+    { playback_.importFile(toPath(file)); };
     setContentOwned(shell.release(), false);
 
     commands_.registerAllCommandsForTarget(this);
@@ -78,6 +94,10 @@ void MainWindow::getAllCommands(juce::Array<juce::CommandID>& commands)
     commands.add(CommandIds::showAbout);
     commands.add(CommandIds::openLogsFolder);
     commands.add(CommandIds::showAudioSettings);
+    commands.add(CommandIds::importAudio);
+    commands.add(CommandIds::transportPlayStop);
+    commands.add(CommandIds::transportPlayPause);
+    commands.add(CommandIds::transportStop);
 }
 
 void MainWindow::getCommandInfo(juce::CommandID commandId, juce::ApplicationCommandInfo& result)
@@ -92,6 +112,29 @@ void MainWindow::getCommandInfo(juce::CommandID commandId, juce::ApplicationComm
         result.setInfo(TRANS("Audio Settings..."),
                        TRANS("Chooses the audio output device, sample rate and buffer size"),
                        TRANS("Options"), 0);
+    }
+    else if (commandId == CommandIds::importAudio)
+    {
+        result.setInfo(TRANS("Import Audio..."), TRANS("Opens an audio file for playback"),
+                       TRANS("File"), 0);
+        result.addDefaultKeypress('i', juce::ModifierKeys::commandModifier);
+    }
+    else if (commandId == CommandIds::transportPlayStop)
+    {
+        result.setInfo(TRANS("Play / Stop"), TRANS("Starts playback, or stops and returns"),
+                       TRANS("Transport"), 0);
+        result.addDefaultKeypress(juce::KeyPress::spaceKey, juce::ModifierKeys::noModifiers);
+    }
+    else if (commandId == CommandIds::transportPlayPause)
+    {
+        result.setInfo(TRANS("Play / Pause"), TRANS("Starts or pauses playback"),
+                       TRANS("Transport"), 0);
+        result.addDefaultKeypress(juce::KeyPress::spaceKey, juce::ModifierKeys::shiftModifier);
+    }
+    else if (commandId == CommandIds::transportStop)
+    {
+        result.setInfo(TRANS("Stop"), TRANS("Stops playback and returns to the start position"),
+                       TRANS("Transport"), 0);
     }
     else if (commandId == CommandIds::openLogsFolder)
     {
@@ -110,7 +153,27 @@ bool MainWindow::perform(const InvocationInfo& info)
     }
     if (info.commandID == CommandIds::showAudioSettings)
     {
-        AudioSettingsComponent::show(devices_, this);
+        AudioSettingsComponent::show(devices_, playback_, this);
+        return true;
+    }
+    if (info.commandID == CommandIds::importAudio)
+    {
+        chooseAudioFile();
+        return true;
+    }
+    if (info.commandID == CommandIds::transportPlayStop)
+    {
+        playback_.transport().togglePlayStop();
+        return true;
+    }
+    if (info.commandID == CommandIds::transportPlayPause)
+    {
+        playback_.transport().togglePlayPause();
+        return true;
+    }
+    if (info.commandID == CommandIds::transportStop)
+    {
+        playback_.transport().stop();
         return true;
     }
     if (info.commandID == CommandIds::openLogsFolder)
@@ -125,7 +188,7 @@ bool MainWindow::perform(const InvocationInfo& info)
 
 juce::StringArray MainWindow::getMenuBarNames()
 {
-    return {TRANS("File"), TRANS("Options"), TRANS("Help")};
+    return {TRANS("File"), TRANS("Transport"), TRANS("Options"), TRANS("Help")};
 }
 
 juce::PopupMenu MainWindow::getMenuForIndex(int topLevelMenuIndex, const juce::String& /*menuName*/)
@@ -133,7 +196,15 @@ juce::PopupMenu MainWindow::getMenuForIndex(int topLevelMenuIndex, const juce::S
     juce::PopupMenu menu;
     if (topLevelMenuIndex == MenuIndex::fileMenu)
     {
+        menu.addCommandItem(&commands_, CommandIds::importAudio);
+        menu.addSeparator();
         menu.addCommandItem(&commands_, juce::StandardApplicationCommandIDs::quit, TRANS("Exit"));
+    }
+    else if (topLevelMenuIndex == MenuIndex::transportMenu)
+    {
+        menu.addCommandItem(&commands_, CommandIds::transportPlayStop);
+        menu.addCommandItem(&commands_, CommandIds::transportPlayPause);
+        menu.addCommandItem(&commands_, CommandIds::transportStop);
     }
     else if (topLevelMenuIndex == MenuIndex::optionsMenu)
     {
@@ -151,6 +222,22 @@ juce::PopupMenu MainWindow::getMenuForIndex(int topLevelMenuIndex, const juce::S
 void MainWindow::menuItemSelected(int /*menuItemId*/, int /*topLevelMenuIndex*/)
 {
     // All menu items are commands; the command manager invokes them.
+}
+
+void MainWindow::chooseAudioFile()
+{
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("Import Audio"), juce::File{},
+                                                   ShellComponent::audioFilePatterns(), true);
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                              juce::FileBrowserComponent::canSelectFiles,
+                          [this](const juce::FileChooser& chooser)
+                          {
+                              const auto file = chooser.getResult();
+                              if (file != juce::File{})
+                              {
+                                  playback_.importFile(toPath(file));
+                              }
+                          });
 }
 
 void MainWindow::deviceEvent(const app::DeviceEvent& event)

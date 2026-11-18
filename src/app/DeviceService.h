@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/Transport.h"
 #include "engine/AudioEngine.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -99,6 +100,8 @@ public:
     void removeListener(Listener* listener);
 
     [[nodiscard]] engine::AudioEngine& engine() noexcept { return engine_; }
+    /// The only sender of transport commands: losing the device stops it here.
+    [[nodiscard]] Transport& transport() noexcept { return transport_; }
     [[nodiscard]] juce::AudioDeviceManager& deviceManager() noexcept { return manager_; }
     [[nodiscard]] DeviceStatus status() const;
 
@@ -106,8 +109,8 @@ public:
     [[nodiscard]] std::optional<engine::RenderSpec> renderSpec() const;
 
     /// Reacts to device changes: saves the user's choice, detects loss and return of the chosen
-    /// device, reports format changes. Runs on every change message and timer tick; public so
-    /// tests can call it without a message loop.
+    /// device, reports format changes, pumps the transport. Runs on every change message and
+    /// every 15th timer tick; public so tests can call it without a message loop.
     void refresh();
 
 private:
@@ -132,6 +135,7 @@ private:
 
     Options options_;
     engine::AudioEngine engine_;
+    Transport transport_{engine_};
     juce::AudioDeviceManager manager_;
     juce::ListenerList<Listener> listeners_;
 

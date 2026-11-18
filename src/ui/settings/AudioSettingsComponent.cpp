@@ -21,26 +21,16 @@ juce::Component::SafePointer<juce::DialogWindow>& openDialog()
 
 } // namespace
 
-AudioSettingsComponent::AudioSettingsComponent(app::DeviceService& devices)
+AudioSettingsComponent::AudioSettingsComponent(app::DeviceService& devices, app::Playback& playback)
     : devices_(devices)
-    , testTone_(devices)
+    , playback_(playback)
     , selector_(devices.deviceManager(), 0, 0, 1, 2, false, false, true, false)
 {
     addAndMakeVisible(selector_);
 
     testToneButton_.setButtonText(TRANS("Play test tone"));
     testToneButton_.setClickingTogglesState(true);
-    testToneButton_.onClick = [this]
-    {
-        if (testToneButton_.getToggleState())
-        {
-            testTone_.start();
-        }
-        else
-        {
-            testTone_.stop();
-        }
-    };
+    testToneButton_.onClick = [this] { playback_.setTestTone(testToneButton_.getToggleState()); };
     addAndMakeVisible(testToneButton_);
 
     status_.setJustificationType(juce::Justification::topLeft);
@@ -66,7 +56,7 @@ AudioSettingsComponent::AudioSettingsComponent(app::DeviceService& devices)
 AudioSettingsComponent::~AudioSettingsComponent()
 {
     stopTimer();
-    testTone_.stop();
+    playback_.setTestTone(false);
 }
 
 void AudioSettingsComponent::paint(juce::Graphics& g)
@@ -90,9 +80,10 @@ void AudioSettingsComponent::resized()
 void AudioSettingsComponent::timerCallback()
 {
     updateStatus();
-    if (testToneButton_.getToggleState() != testTone_.isPlaying())
+    const bool toneOn = playback_.status().testTone;
+    if (testToneButton_.getToggleState() != toneOn)
     {
-        testToneButton_.setToggleState(testTone_.isPlaying(),
+        testToneButton_.setToggleState(toneOn,
                                        juce::dontSendNotification); // stopped by device loss
     }
 }
@@ -135,7 +126,8 @@ void AudioSettingsComponent::updateStatus()
     status_.setText(text, juce::dontSendNotification);
 }
 
-void AudioSettingsComponent::show(app::DeviceService& devices, juce::Component* centreAround)
+void AudioSettingsComponent::show(app::DeviceService& devices, app::Playback& playback,
+                                  juce::Component* centreAround)
 {
     if (auto* existing = openDialog().getComponent())
     {
@@ -143,7 +135,7 @@ void AudioSettingsComponent::show(app::DeviceService& devices, juce::Component* 
         return;
     }
     juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned(new AudioSettingsComponent(devices));
+    options.content.setOwned(new AudioSettingsComponent(devices, playback));
     options.dialogTitle = TRANS("Audio Settings");
     options.dialogBackgroundColour = Theme::current().colours.panelBackground;
     options.componentToCentreAround = centreAround;

@@ -45,6 +45,53 @@ ShellComponent::ShellComponent()
     addAndMakeVisible(bottom_);
 }
 
+juce::String ShellComponent::audioFilePatterns()
+{
+    return "*.wav;*.wave;*.bwf;*.rf64;*.bw64;*.w64";
+}
+
+bool ShellComponent::isSupportedAudioFile(const juce::File& file)
+{
+    const auto patterns = juce::StringArray::fromTokens(audioFilePatterns(), ";", "");
+    for (const auto& pattern : patterns)
+    {
+        if (file.getFileName().matchesWildcard(pattern, true))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ShellComponent::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    // Every file is accepted so that an unsupported one gets an explanation, not silence.
+    return !files.isEmpty() && onAudioFileDropped != nullptr;
+}
+
+void ShellComponent::filesDropped(const juce::StringArray& files, int /*x*/, int /*y*/)
+{
+    for (const auto& path : files)
+    {
+        const juce::File file{path};
+        if (isSupportedAudioFile(file))
+        {
+            onAudioFileDropped(file); // stage S1 plays one file: the first supported one
+            return;
+        }
+    }
+    juce::AlertWindow::showAsync(
+        juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::InfoIcon)
+            .withTitle(TRANS("Unsupported file"))
+            .withMessage(TRANS("This version opens WAV files (WAV, BWF, RF64, BW64, Wave64). "
+                               "AIFF, FLAC and MP3 support is planned.") +
+                         "\n\n" + juce::File{files[0]}.getFileName())
+            .withButton(TRANS("OK"))
+            .withAssociatedComponent(this),
+        nullptr);
+}
+
 void ShellComponent::paint(juce::Graphics& g)
 {
     g.fillAll(Theme::current().colours.windowBackground);

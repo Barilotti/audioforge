@@ -12,6 +12,11 @@ enum CommandIds : juce::CommandID
     showAbout = 0x2001,
     openLogsFolder = 0x2002,
     showAudioSettings = 0x2003,
+    importAudio = 0x2004,
+
+    transportPlayStop = 0x2101,
+    transportPlayPause = 0x2102,
+    transportStop = 0x2103,
 };
 
 } // namespace af::ui

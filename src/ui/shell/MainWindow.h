@@ -2,9 +2,12 @@
 
 #include "app/AppPaths.h"
 #include "app/DeviceService.h"
+#include "app/Playback.h"
 #include "ui/shell/ShellComponent.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
+
+#include <memory>
 
 namespace af::ui
 {
@@ -17,7 +20,7 @@ class MainWindow final : public juce::DocumentWindow,
 {
 public:
     MainWindow(const juce::String& name, juce::ApplicationCommandManager& commands,
-               app::AppPaths paths, app::DeviceService& devices);
+               app::AppPaths paths, app::DeviceService& devices, app::Playback& playback);
     ~MainWindow() override;
 
     [[nodiscard]] ShellComponent& shell() noexcept { return *shell_; }
@@ -40,9 +43,13 @@ private:
     // DeviceService::Listener
     void deviceEvent(const app::DeviceEvent& event) override;
 
+    void chooseAudioFile();
+
     juce::ApplicationCommandManager& commands_;
     app::AppPaths paths_;
     app::DeviceService& devices_;
+    app::Playback& playback_;
+    std::unique_ptr<juce::FileChooser> chooser_;
     ShellComponent* shell_ = nullptr; // owned by the window as its content component
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)

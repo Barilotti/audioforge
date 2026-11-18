@@ -132,7 +132,7 @@ inline StereoBuffer playThroughEngine(std::unique_ptr<engine::RenderGraph> graph
     engine::AudioEngine engine;
     engine.prepare(graph->spec().sampleRate, graph->spec().maxBlockFrames);
     engine.publish(std::move(graph));
-    engine.setPlaying(true);
+    (void)engine.transport(engine::TransportCommand::play()); // an empty queue has room
 
     StereoBuffer out{std::vector<float>(static_cast<std::size_t>(frames)),
                      std::vector<float>(static_cast<std::size_t>(frames))};
