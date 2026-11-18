@@ -8,7 +8,8 @@
 namespace
 {
 
-[[clang::nonblocking]] int allocateOnRealtimePath()
+// The attribute belongs to the function type, so it follows the declarator.
+int allocateOnRealtimePath() [[clang::nonblocking]]
 {
     std::vector<int> values(1024);
     return static_cast<int>(values.size());
