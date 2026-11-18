@@ -24,4 +24,4 @@ python3 benchmarks/check_regression.py bench.json benchmarks/baseline/linux-ci.j
 python3 benchmarks/check_regression.py benchmarks.json benchmarks/baseline/linux-ci.json --write-baseline
 ```
 
-Отчёт `benchmarks.json` для этого берётся из артефакта CI, а не с локальной машины.
+Отчёт `benchmarks.json` для этого берётся из артефакта CI, а не с локальной машины. Раннеры CI бывают разными, поэтому базовую линию лучше собирать как наибольшее отношение из двух-трёх прогонов CI (столбец ratio в выводе шага Benchmarks).
