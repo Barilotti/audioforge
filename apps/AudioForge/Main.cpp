@@ -10,6 +10,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -57,6 +58,19 @@ public:
         mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_, paths,
                                                            *devices_, *playback_);
         aflog::info("Main window opened");
+
+        // Audio files passed on the command line ("Open with", drag onto the .exe) are imported.
+        for (const auto& argument : juce::StringArray::fromTokens(commandLine, true))
+        {
+            const juce::File file{argument.unquoted()};
+            if (!argument.startsWith("-") && juce::File::isAbsolutePath(argument.unquoted()) &&
+                file.existsAsFile())
+            {
+                const auto utf8 = file.getFullPathName().toStdString();
+                playback_->importFile(
+                    std::filesystem::path{std::u8string{utf8.begin(), utf8.end()}});
+            }
+        }
 
         // CI start-up/shut-down check: open the main window, then quit through the normal path.
         // Leaks or crashes on shutdown fail the test (JUCE's leak detector asserts in debug).

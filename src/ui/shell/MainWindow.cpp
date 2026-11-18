@@ -4,6 +4,7 @@
 #include "ui/shell/AboutComponent.h"
 #include "ui/shell/Commands.h"
 #include "ui/theme/Theme.h"
+#include "ui/timeline/TimelineView.h"
 #include "ui/transport/TransportBar.h"
 
 #include <filesystem>
@@ -41,6 +42,7 @@ MainWindow::MainWindow(const juce::String& name, juce::ApplicationCommandManager
 
     auto shell = std::make_unique<ShellComponent>();
     shell_ = shell.get();
+    shell_->centrePanel().setContent(std::make_unique<TimelineView>(devices_, playback_));
     shell_->bottomPanel().setContent(
         std::make_unique<TransportBar>(devices_, playback_, [this] { chooseAudioFile(); }));
     shell_->onAudioFileDropped = [this](const juce::File& file)

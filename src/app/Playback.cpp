@@ -154,6 +154,7 @@ void Playback::finishImport(model::AssetId id, const assets::AssetStatus& loaded
 
     const auto previous = fileAsset_;
     file_ = std::move(source);
+    ++revision_;
     fileAsset_ = id;
     loading_.reset();
 

@@ -42,6 +42,18 @@ af_set_warnings(af_app_tests)
 set_target_properties(af_app_tests PROPERTIES FOLDER "Tests")
 catch_discover_tests(af_app_tests DISCOVERY_MODE PRE_TEST TEST_PREFIX "app.")
 
+# Tests of UI logic that needs no window (geometry, painting into images).
+add_executable(af_ui_tests
+    app/AppTestMain.cpp
+    ui/TimelineTests.cpp)
+target_link_libraries(af_ui_tests PRIVATE AudioForge::ui Catch2::Catch2)
+if(AF_ENABLE_TSAN OR AF_ENABLE_RTSAN)
+    target_compile_definitions(af_ui_tests PRIVATE AF_SANITIZED_BUILD)
+endif()
+af_set_warnings(af_ui_tests)
+set_target_properties(af_ui_tests PROPERTIES FOLDER "Tests")
+catch_discover_tests(af_ui_tests DISCOVERY_MODE PRE_TEST TEST_PREFIX "ui.")
+
 # Architecture rules: forbidden #include directions between modules.
 add_test(NAME architecture.module_includes
     COMMAND "${CMAKE_COMMAND}" -DSOURCE_DIR=${PROJECT_SOURCE_DIR}/src
