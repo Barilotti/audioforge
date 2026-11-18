@@ -1,37 +1,14 @@
 #include "core/Version.h"
-#include "ui/MainComponent.h"
+#include "ui/shell/MainWindow.h"
+#include "ui/theme/LookAndFeel.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
+#include <string>
 
 namespace
 {
-
-class MainWindow final : public juce::DocumentWindow
-{
-public:
-    explicit MainWindow(const juce::String& name)
-        : DocumentWindow(name, juce::Colour{0xff1b1d21}, DocumentWindow::allButtons)
-    {
-        setUsingNativeTitleBar(true);
-        setContentOwned(new af::ui::MainComponent(), true);
-        setResizable(true, true);
-        setResizeLimits(960, 600, 10000, 10000);
-        centreWithSize(getWidth(), getHeight());
-        setVisible(true);
-    }
-
-    ~MainWindow() override = default;
-
-    void closeButtonPressed() override
-    {
-        juce::JUCEApplication::getInstance()->systemRequestedQuit();
-    }
-
-private:
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
-};
 
 class AudioForgeApplication final : public juce::JUCEApplication
 {
@@ -43,17 +20,32 @@ public:
     }
     bool moreThanOneInstanceAllowed() override { return true; }
 
-    void initialise(const juce::String& /*commandLine*/) override
+    void initialise(const juce::String& commandLine) override
     {
-        mainWindow = std::make_unique<MainWindow>(getApplicationName());
+        juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
+        mainWindow_ = std::make_unique<af::ui::MainWindow>(getApplicationName(), commands_);
+
+        // CI start-up/shut-down check: open the main window, then quit through the normal path.
+        // Leaks or crashes on shutdown fail the test (JUCE's leak detector asserts in debug).
+        if (commandLine.contains("--smoke-test"))
+        {
+            juce::Timer::callAfterDelay(1000, [this] { systemRequestedQuit(); });
+        }
     }
 
-    void shutdown() override { mainWindow.reset(); }
+    void shutdown() override
+    {
+        // Reverse order of creation (architecture section 4.2, application shutdown).
+        mainWindow_.reset();
+        juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
+    }
 
     void systemRequestedQuit() override { quit(); }
 
 private:
-    std::unique_ptr<MainWindow> mainWindow;
+    af::ui::LookAndFeel lookAndFeel_;
+    juce::ApplicationCommandManager commands_;
+    std::unique_ptr<af::ui::MainWindow> mainWindow_;
 };
 
 } // namespace
