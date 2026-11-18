@@ -3,6 +3,8 @@
 #include "assets/AudioDecoder.h"
 #include "assets/AudioFileInfo.h"
 #include "assets/MemoryBudget.h"
+#include "assets/PeakCache.h"
+#include "assets/PeakData.h"
 #include "core/Result.h"
 #include "core/TimeTicks.h"
 #include "core/Uuid.h"
@@ -82,6 +84,10 @@ struct AssetStatus
     DecodedAudioPtr audio;             ///< Set when ready.
     std::optional<AudioFileInfo> info; ///< Known once the header was parsed.
     std::optional<core::Error> error;  ///< Set when failed.
+    /// Waveform peaks: from the peak cache as soon as the file is hashed, otherwise computed
+    /// while decoding. Kept when the audio is evicted, so the waveform stays visible.
+    PeakDataPtr peaks;
+    std::optional<ContentHash> contentHash; ///< Known once hashed (only with a peak cache).
 };
 
 /// Decodes assets in the background and keeps them in memory within a budget.
@@ -100,6 +106,8 @@ public:
         std::shared_ptr<const ISystemMemory> systemMemory;
         DecoderRegistry decoders;
         int workerThreads = 2;
+        /// Global peak cache on disk; null keeps peaks in memory only and skips hashing.
+        std::shared_ptr<const PeakCache> peakCache;
     };
 
     /// Called after every state change. It runs on a worker thread or on the thread that caused
@@ -167,6 +175,8 @@ private:
         DecodedAudioPtr audio;
         std::optional<AudioFileInfo> info;
         std::optional<core::Error> error;
+        PeakDataPtr peaks;
+        std::optional<ContentHash> contentHash;
         std::uint64_t lastUse = 0;
     };
 

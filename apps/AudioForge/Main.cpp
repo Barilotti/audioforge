@@ -49,6 +49,7 @@ public:
         cacheOptions.budget = af::assets::MemoryBudget::defaultsFor(
             af::assets::ISystemMemory::host()->physicalBytes());
         cacheOptions.decoders = af::assets::DecoderRegistry::withBuiltInDecoders();
+        cacheOptions.peakCache = std::make_shared<af::assets::PeakCache>(paths.cache / "peaks");
         cache_ = std::make_unique<af::assets::AudioBufferCache>(std::move(cacheOptions));
         playback_ = std::make_unique<af::app::Playback>(*devices_, *cache_);
 

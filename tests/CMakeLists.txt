@@ -2,6 +2,7 @@ include(Catch)
 
 add_executable(af_unit_tests
     unit/assets/AudioBufferCacheTests.cpp
+    unit/assets/PeakTests.cpp
     unit/assets/WavDecoderTests.cpp
     unit/core/LogTests.cpp
     unit/core/PluralRulesTests.cpp

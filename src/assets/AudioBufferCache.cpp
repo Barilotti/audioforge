@@ -110,6 +110,26 @@ core::Result<void> AudioBufferCache::insertDecoded(AssetKey key, DecodedAudioPtr
     {
         return makeError(ErrorCode::invalidArgument, "No audio to insert");
     }
+    // Peaks of generated audio are computed here, outside the lock (it is one pass).
+    PeakDataPtr peaks;
+    try
+    {
+        PeakBuilder builder{audio->sampleRate(), audio->channels(), audio->frames()};
+        std::array<const float*, maxChannels> channels{};
+        const int count = std::min(audio->channels(), maxChannels);
+        for (int ch = 0; ch < count; ++ch)
+        {
+            channels[static_cast<std::size_t>(ch)] = audio->channel(ch);
+        }
+        builder.add(std::span<const float* const>(channels.data(), static_cast<std::size_t>(count)),
+                    audio->frames());
+        peaks = builder.finish();
+    }
+    catch (const std::bad_alloc&)
+    {
+        return makeError(ErrorCode::outOfMemory, "Not enough memory for the waveform peaks");
+    }
+
     std::vector<Notification> notes;
     std::vector<DecodedAudioPtr> released;
     bool refused = false;
@@ -133,6 +153,7 @@ core::Result<void> AudioBufferCache::insertDecoded(AssetKey key, DecodedAudioPtr
         if (!refused)
         {
             entry.audio = std::move(audio);
+            entry.peaks = std::move(peaks);
             entry.state = AssetState::ready;
             entry.error.reset();
             entry.lastUse = ++useClock_;
@@ -203,6 +224,8 @@ AssetStatus AudioBufferCache::status(AssetKey key) const
     status.audio = entry.audio;
     status.info = entry.info;
     status.error = entry.error;
+    status.peaks = entry.peaks;
+    status.contentHash = entry.contentHash;
     if (entry.state == AssetState::decoding && entry.job)
     {
         status.progress = entry.job->progress.load();
@@ -316,12 +339,54 @@ void AudioBufferCache::runJob(const std::shared_ptr<Job>& job)
     auto& reader = *opened.value();
     const AudioFileInfo info = reader.info();
 
+    PeakDataPtr knownPeaks;
+    std::optional<ContentHash> contentHash;
     {
         const std::scoped_lock lock{mutex_};
         const auto it = entries_.find(job->key);
         if (it != entries_.end() && it->second.job == job)
         {
             it->second.info = info;
+            knownPeaks = it->second.peaks; // decoded before and evicted since
+            contentHash = it->second.contentHash;
+        }
+    }
+
+    if (options_.peakCache && !contentHash)
+    {
+        auto hashed = hashFile(job->file, &job->cancelled);
+        if (!hashed)
+        {
+            finishJob(job, hashed.error());
+            return;
+        }
+        contentHash = hashed.value();
+    }
+    if (options_.peakCache && contentHash && !knownPeaks)
+    {
+        auto cached = options_.peakCache->load(*contentHash);
+        if (cached && cached->channels() == info.channels && cached->frames() == info.frames &&
+            cached->sampleRate() == info.sampleRate)
+        {
+            knownPeaks = std::move(cached);
+        }
+    }
+    if (contentHash || knownPeaks)
+    {
+        bool accepted = false;
+        {
+            const std::scoped_lock lock{mutex_};
+            const auto it = entries_.find(job->key);
+            if (it != entries_.end() && it->second.job == job)
+            {
+                it->second.contentHash = contentHash;
+                it->second.peaks = knownPeaks;
+                accepted = true;
+            }
+        }
+        if (accepted && knownPeaks)
+        {
+            notify({{job->key, AssetState::decoding}}); // the waveform can be drawn already
         }
     }
 
@@ -340,6 +405,11 @@ void AudioBufferCache::runJob(const std::shared_ptr<Job>& job)
     try
     {
         auto audio = std::make_shared<DecodedAudio>(info.sampleRate, info.channels, info.frames);
+        std::optional<PeakBuilder> peakBuilder;
+        if (!knownPeaks)
+        {
+            peakBuilder.emplace(info.sampleRate, info.channels, info.frames);
+        }
         std::array<float*, maxChannels> pointers{};
         core::FrameCount done = 0;
         while (done < info.frames)
@@ -371,9 +441,32 @@ void AudioBufferCache::runJob(const std::shared_ptr<Job>& job)
                                     pathText(job->file)));
                 return;
             }
+            if (peakBuilder)
+            {
+                std::array<const float*, maxChannels> decoded{};
+                std::copy_n(pointers.begin(), info.channels, decoded.begin());
+                peakBuilder->add(std::span<const float* const>(
+                                     decoded.data(), static_cast<std::size_t>(info.channels)),
+                                 got.value());
+            }
             done += got.value();
             job->progress =
                 static_cast<float>(static_cast<double>(done) / static_cast<double>(info.frames));
+        }
+        if (peakBuilder)
+        {
+            PeakDataPtr peaks = peakBuilder->finish();
+            if (options_.peakCache && contentHash)
+            {
+                (void)options_.peakCache->store(*contentHash,
+                                                *peaks); // a cache: failure is harmless
+            }
+            const std::scoped_lock lock{mutex_};
+            const auto it = entries_.find(job->key);
+            if (it != entries_.end() && it->second.job == job)
+            {
+                it->second.peaks = std::move(peaks);
+            }
         }
         finishJob(job, DecodedAudioPtr{std::move(audio)});
     }
