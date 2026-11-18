@@ -5,6 +5,7 @@
 af_add_module(core
     SOURCES
         core/Log.cpp
+        core/PluralRules.cpp
         core/RealtimeThread.cpp
         core/Result.cpp
         core/TimeTicks.cpp
@@ -47,7 +48,12 @@ af_add_module(app
 # User interface. The only module allowed to use JUCE GUI classes.
 af_add_module(ui
     SOURCES
-        ui/MainComponent.cpp
+        ui/shell/AboutComponent.cpp
+        ui/shell/MainWindow.cpp
+        ui/shell/Panel.cpp
+        ui/shell/ShellComponent.cpp
+        ui/theme/LookAndFeel.cpp
+        ui/theme/Theme.cpp
     PUBLIC_DEPS
         AudioForge::app
         AudioForge::juce)

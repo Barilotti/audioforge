@@ -2,6 +2,7 @@ include(Catch)
 
 add_executable(af_unit_tests
     unit/core/LogTests.cpp
+    unit/core/PluralRulesTests.cpp
     unit/core/ResultTests.cpp
     unit/core/TimeTicksTests.cpp
     unit/core/UuidTests.cpp
@@ -22,6 +23,21 @@ set_tests_properties(apps.af_render_version PROPERTIES
     PASS_REGULAR_EXPRESSION "^af-render ${PROJECT_VERSION} ")
 add_test(NAME apps.af_render_rejects_unknown_arguments COMMAND af-render --no-such-option)
 set_tests_properties(apps.af_render_rejects_unknown_arguments PROPERTIES WILL_FAIL TRUE)
+
+# Start-up and shut-down of the GUI application. On Linux it needs a display (xvfb-run).
+if(WIN32)
+    add_test(NAME apps.audioforge_starts_and_quits COMMAND AudioForge --smoke-test)
+else()
+    find_program(XVFB_RUN xvfb-run)
+    if(XVFB_RUN)
+        add_test(NAME apps.audioforge_starts_and_quits
+            COMMAND "${XVFB_RUN}" -a $<TARGET_FILE:AudioForge> --smoke-test)
+    endif()
+endif()
+if(TEST apps.audioforge_starts_and_quits)
+    set_tests_properties(apps.audioforge_starts_and_quits PROPERTIES TIMEOUT 60
+        FAIL_REGULAR_EXPRESSION "Leaked objects detected|JUCE Assertion failure")
+endif()
 
 # RealtimeSanitizer canary: must abort when the sanitizer works.
 if(AF_ENABLE_RTSAN)
