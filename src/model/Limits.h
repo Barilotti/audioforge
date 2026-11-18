@@ -14,8 +14,8 @@ inline constexpr double maxGainDb = 24.0;
 inline constexpr double minPan = -1.0;
 inline constexpr double maxPan = 1.0;
 
-/// Largest channel count of an asset.
-inline constexpr int maxAssetChannels = 64;
+/// Largest channel count of an asset (architecture v0.2, section 4.7).
+inline constexpr int maxAssetChannels = 32;
 
 /// Every clip must end within this distance from the Event start, and no asset may be longer
 /// (architecture v0.2, section 5.3).

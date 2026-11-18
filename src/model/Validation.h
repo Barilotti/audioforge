@@ -15,7 +15,7 @@ namespace af::model
 /// Invariants:
 ///  - no node pointer is null;
 ///  - every entity has a non-nil id, and no id appears twice in the project;
-///  - sample rates are in the supported range; assets have 1...64 channels, at least one frame
+///  - sample rates are in the supported range; assets have 1...32 channels, at least one frame
 ///    and are at most 24 hours long;
 ///  - every clip refers to an asset of the project;
 ///  - 0 <= sourceIn < sourceOut <= asset frames;

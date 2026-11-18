@@ -99,7 +99,7 @@ private:
         }
         if (asset.info.channels < 1 || asset.info.channels > limits::maxAssetChannels)
         {
-            fail("Asset channel count is outside 1...64", subject + ".channels");
+            fail("Asset channel count is outside 1...32", subject + ".channels");
         }
         if (asset.info.frames < 1)
         {
