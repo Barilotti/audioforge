@@ -12,9 +12,12 @@ add_executable(af_unit_tests
     unit/core/TimeTicksTests.cpp
     unit/core/UuidTests.cpp
     unit/core/VersionTests.cpp
+    unit/dsp/DspTests.cpp
+    unit/engine/AudioEngineTests.cpp
+    unit/engine/RenderGraphTests.cpp
     unit/model/ModelTests.cpp
     unit/model/ValidationTests.cpp)
-target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model AudioForge::assets
+target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model AudioForge::assets AudioForge::engine
                                             Catch2::Catch2WithMain)
 target_compile_definitions(af_unit_tests PRIVATE AF_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 if(NOT AF_ENABLE_TSAN AND NOT AF_ENABLE_RTSAN)

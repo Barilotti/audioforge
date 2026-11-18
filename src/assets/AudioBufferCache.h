@@ -120,6 +120,10 @@ public:
     /// Starts decoding unless the asset is already ready or decoding. A failed asset is retried.
     void request(AssetKey key, const std::filesystem::path& file);
 
+    /// Adds audio that was produced in memory (generated test signals, Render Preview results)
+    /// as a ready asset. Evicts like a decode; fails with outOfMemory above the hard budget.
+    core::Result<void> insertDecoded(AssetKey key, DecodedAudioPtr audio);
+
     /// Stops a running decode; the asset goes back to unloaded.
     void cancel(AssetKey key);
 
