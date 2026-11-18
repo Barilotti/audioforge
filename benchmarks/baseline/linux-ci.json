@@ -1,12 +1,12 @@
 {
   "ratios": {
-    "BM_Compile64Layers": 0.0738277913902375,
-    "BM_Engine64Layers/128": 0.033606253285958565,
-    "BM_Engine64Layers/256": 0.06776381085385025,
-    "BM_Engine64Layers/512": 0.13335694127397996,
-    "BM_Engine64LayersResampled/128": 0.9674561011823419,
-    "BM_Engine64LayersResampled/512": 3.820268459792862,
-    "BM_PeakBuildOneMinute": 22.29721717927429
+    "BM_Compile64Layers": 0.055,
+    "BM_Engine64Layers/128": 0.04,
+    "BM_Engine64Layers/256": 0.079,
+    "BM_Engine64Layers/512": 0.157,
+    "BM_Engine64LayersResampled/128": 0.878,
+    "BM_Engine64LayersResampled/512": 3.503,
+    "BM_PeakBuildOneMinute": 20.44
   },
   "tolerance": 0.25
 }
