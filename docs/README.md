@@ -19,3 +19,4 @@
 | [0009](adr/0009-development-process.md) | Репозиторий, среда разработки и процесс |
 | [0010](adr/0010-build-structure.md) | Структура сборки и зависимостей |
 | [0011](adr/0011-model-invariants.md) | Минимальная доменная модель и её инварианты |
+| [0012](adr/0012-wav-decoding.md) | Декодирование WAV и AudioBufferCache |

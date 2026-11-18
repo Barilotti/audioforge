@@ -29,7 +29,13 @@ af_add_module(serialization PUBLIC_DEPS AudioForge::model AudioForge::core)
 af_add_module(dsp PUBLIC_DEPS AudioForge::core)
 
 # Asset decoding, buffer cache, peaks.
-af_add_module(assets PUBLIC_DEPS AudioForge::core)
+af_add_module(assets
+    SOURCES
+        assets/AudioBufferCache.cpp
+        assets/AudioDecoder.cpp
+        assets/MemoryBudget.cpp
+        assets/WavDecoder.cpp
+    PUBLIC_DEPS AudioForge::core)
 
 # Render graph, real-time player, offline renderer, devices.
 af_add_module(engine PUBLIC_DEPS AudioForge::model AudioForge::dsp AudioForge::assets)
