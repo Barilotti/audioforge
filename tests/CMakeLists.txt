@@ -9,8 +9,10 @@ add_executable(af_unit_tests
     unit/core/rt/SpscQueueTests.cpp
     unit/core/TimeTicksTests.cpp
     unit/core/UuidTests.cpp
-    unit/core/VersionTests.cpp)
-target_link_libraries(af_unit_tests PRIVATE AudioForge::core Catch2::Catch2WithMain)
+    unit/core/VersionTests.cpp
+    unit/model/ModelTests.cpp
+    unit/model/ValidationTests.cpp)
+target_link_libraries(af_unit_tests PRIVATE AudioForge::core AudioForge::model Catch2::Catch2WithMain)
 af_set_warnings(af_unit_tests)
 set_target_properties(af_unit_tests PROPERTIES FOLDER "Tests")
 catch_discover_tests(af_unit_tests DISCOVERY_MODE PRE_TEST)

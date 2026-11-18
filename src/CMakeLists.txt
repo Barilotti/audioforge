@@ -16,7 +16,11 @@ af_add_module(core
 configure_file(core/BuildInfo.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/core/BuildInfo.cpp" @ONLY)
 
 # Domain model, commands, undo. Depends only on core: no JUCE, no audio, no UI.
-af_add_module(model PUBLIC_DEPS AudioForge::core)
+af_add_module(model
+    SOURCES
+        model/Project.cpp
+        model/Validation.cpp
+    PUBLIC_DEPS AudioForge::core)
 
 # Project file format (JSON) and migrations.
 af_add_module(serialization PUBLIC_DEPS AudioForge::model AudioForge::core)
