@@ -13,6 +13,7 @@ endif()
 option(AF_BUILD_TESTS "Build unit tests" ON)
 option(AF_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in AudioForge targets" ON)
 option(AF_ENABLE_RTSAN "Build with Clang RealtimeSanitizer (-fsanitize=realtime)" OFF)
+option(AF_ENABLE_TSAN "Build with ThreadSanitizer (-fsanitize=thread)" OFF)
 
 # --- Global settings ---------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
