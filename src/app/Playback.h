@@ -8,6 +8,7 @@
 
 #include <juce_events/juce_events.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -58,17 +59,24 @@ public:
     void setTestTone(bool on);
 
     [[nodiscard]] Status status() const;
+
+    /// What the timeline shows: the imported project (null before the first import).
+    struct Document
+    {
+        model::Project project;
+        model::EventId event;
+    };
+    [[nodiscard]] const Document* document() const noexcept { return file_ ? &*file_ : nullptr; }
+    /// Grows whenever document() changes.
+    [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
+    [[nodiscard]] assets::AudioBufferCache& cache() noexcept { return cache_; }
     [[nodiscard]] Transport& transport() noexcept { return devices_.transport(); }
 
     /// Follows the import and graph state; runs on the timer.
     void refresh();
 
 private:
-    struct Source
-    {
-        model::Project project;
-        model::EventId event;
-    };
+    using Source = Document;
 
     void deviceEvent(const DeviceEvent& event) override;
     void timerCallback() override { refresh(); }
@@ -88,6 +96,7 @@ private:
     std::optional<model::AssetId> fileAsset_;
     std::vector<assets::AssetKey> waitingFor_; ///< Assets the published graph had to skip.
     Status status_;
+    std::uint64_t revision_ = 0;
 };
 
 } // namespace af::app

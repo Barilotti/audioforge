@@ -83,6 +83,10 @@ endif()
 af_add_module(ui
     SOURCES
         ui/settings/AudioSettingsComponent.cpp
+        ui/timeline/TimelineGeometry.cpp
+        ui/timeline/TimelineModel.cpp
+        ui/timeline/TimelinePainter.cpp
+        ui/timeline/TimelineView.cpp
         ui/transport/TransportBar.cpp
         ui/widgets/LevelMeter.cpp
         ui/shell/AboutComponent.cpp
