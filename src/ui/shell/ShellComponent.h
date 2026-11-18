@@ -35,6 +35,7 @@ public:
 
     /// File patterns of the formats AudioForge imports, for file choosers and drops.
     [[nodiscard]] static juce::String audioFilePatterns();
+    [[nodiscard]] static bool isSupportedAudioFile(const juce::File& file);
 
 private:
     Panel left_;

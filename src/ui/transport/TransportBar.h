@@ -40,6 +40,7 @@ private:
     LevelMeter meter_;
     juce::VBlankAttachment vblank_;
     double lastRefresh_ = 0.0;
+    app::Playback::State lastState_ = app::Playback::State::empty;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransportBar)
 };

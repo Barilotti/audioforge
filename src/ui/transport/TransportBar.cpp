@@ -165,6 +165,25 @@ void TransportBar::refresh()
         fileText << "  " << TRANS("(no audio device)");
     }
     file_.setText(fileText, juce::dontSendNotification);
+    if (status.state == app::Playback::State::failed && lastState_ != status.state)
+    {
+        auto message =
+            TRANS("AudioForge cannot open \"%1\".").replace("%1", fromStd(status.loadingName));
+        message << "\n\n" << fromStd(status.error);
+        if (!status.fileName.empty())
+        {
+            message << "\n\n"
+                    << TRANS("The previous file stays loaded:") << " " << fromStd(status.fileName);
+        }
+        juce::AlertWindow::showAsync(juce::MessageBoxOptions()
+                                         .withIconType(juce::MessageBoxIconType::WarningIcon)
+                                         .withTitle(TRANS("Import failed"))
+                                         .withMessage(message)
+                                         .withButton(TRANS("OK"))
+                                         .withAssociatedComponent(this),
+                                     nullptr);
+    }
+    lastState_ = status.state;
     file_.setColour(juce::Label::textColourId, fileColour);
 
     juce::String loadText;
