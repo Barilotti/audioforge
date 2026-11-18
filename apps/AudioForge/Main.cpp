@@ -62,9 +62,12 @@ public:
         // Audio files passed on the command line ("Open with", drag onto the .exe) are imported.
         for (const auto& argument : juce::StringArray::fromTokens(commandLine, true))
         {
-            const juce::File file{argument.unquoted()};
-            if (!argument.startsWith("-") && juce::File::isAbsolutePath(argument.unquoted()) &&
-                file.existsAsFile())
+            const auto path = argument.unquoted();
+            if (argument.startsWith("-") || !juce::File::isAbsolutePath(path))
+            {
+                continue; // options such as --smoke-test, or not a file
+            }
+            if (const juce::File file{path}; file.existsAsFile())
             {
                 const auto utf8 = file.getFullPathName().toStdString();
                 playback_->importFile(
