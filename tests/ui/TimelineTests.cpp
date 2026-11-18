@@ -6,8 +6,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <vector>
 
 using namespace af;
 using af::ui::TimelineGeometry;
@@ -18,6 +20,25 @@ using Catch::Approx;
 
 namespace
 {
+
+/// Median wall time of `frames` calls, in milliseconds. The median ignores frames where a
+/// shared CI runner preempted the test, which made the mean fail at random.
+template <typename Paint>
+double medianFrameMs(int frames, Paint&& paint)
+{
+    std::vector<double> times;
+    times.reserve(static_cast<std::size_t>(frames));
+    for (int f = 0; f < frames; ++f)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        paint();
+        times.push_back(
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                .count());
+    }
+    std::nth_element(times.begin(), times.begin() + frames / 2, times.end());
+    return times[static_cast<std::size_t>(frames / 2)];
+}
 
 /// `layers` layers of `clipsPerLayer` one-second clips with one-second gaps.
 model::Project makeProject(int layers, int clipsPerLayer, model::EventId& eventId)
@@ -162,16 +183,14 @@ TEST_CASE("Two hundred visible clips paint within a 60 FPS frame", "[ui][timelin
 #else
     constexpr int frames = 60;
 #endif
-    const auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < frames; ++i)
-    {
-        geometry.scrollByPixels(1.0);
-        TimelinePainter::paint(g, layout, geometry, model, 1.0 + 0.01 * i);
-    }
+    int i = 0;
     const auto perFrame =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
-            .count() /
-        frames;
+        medianFrameMs(frames,
+                      [&]
+                      {
+                          geometry.scrollByPixels(1.0);
+                          TimelinePainter::paint(g, layout, geometry, model, 1.0 + 0.01 * i++);
+                      });
     UNSCOPED_INFO("Timeline frame with 200 clips: " << perFrame << " ms");
 #if defined(AF_SANITIZED_BUILD)
     // Sanitizers slow painting by an unpredictable factor: only check that it completes.
