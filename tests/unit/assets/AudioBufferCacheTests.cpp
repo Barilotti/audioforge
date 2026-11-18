@@ -441,3 +441,20 @@ TEST_CASE("An allocation failure while decoding fails the asset, not the applica
     REQUIRE(cache.usedBytes() == 0);
 }
 #endif
+
+TEST_CASE("Audio produced in memory can be inserted as a ready asset", "[assets][cache]")
+{
+    AudioBufferCache cache{options(gibibyte, 1000)};
+    const auto key = Uuid::generate();
+    auto audio = std::make_shared<DecodedAudio>(48'000, 1, 100);
+    REQUIRE(cache.insertDecoded(key, audio).ok());
+    REQUIRE(cache.status(key).state == AssetState::ready);
+    REQUIRE(cache.acquire(key) == audio);
+    REQUIRE(cache.usedBytes() == 400);
+
+    const auto tooBig =
+        cache.insertDecoded(Uuid::generate(), std::make_shared<DecodedAudio>(48'000, 1, 200));
+    REQUIRE_FALSE(tooBig.ok());
+    REQUIRE(tooBig.error().code == ErrorCode::outOfMemory);
+    REQUIRE_FALSE(cache.insertDecoded(key, nullptr).ok());
+}

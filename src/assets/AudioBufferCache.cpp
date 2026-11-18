@@ -104,6 +104,51 @@ void AudioBufferCache::request(AssetKey key, const std::filesystem::path& file)
     notify({{key, AssetState::decoding}});
 }
 
+core::Result<void> AudioBufferCache::insertDecoded(AssetKey key, DecodedAudioPtr audio)
+{
+    if (!audio)
+    {
+        return makeError(ErrorCode::invalidArgument, "No audio to insert");
+    }
+    std::vector<Notification> notes;
+    std::vector<DecodedAudioPtr> released;
+    bool refused = false;
+    {
+        const std::scoped_lock lock{mutex_};
+        auto& entry = entries_[key];
+        if (entry.job)
+        {
+            entry.job->cancelled = true;
+            entry.job.reset();
+        }
+        if (entry.state == AssetState::ready)
+        {
+            readyBytes_ -= entry.audio->bytes();
+            released.push_back(std::move(entry.audio));
+            entry.state = AssetState::unloaded;
+        }
+        const auto bytes = audio->bytes();
+        evictForLocked(bytes, notes, released);
+        refused = readyBytes_ + reservedBytes_ + bytes > options_.budget.hardBytes;
+        if (!refused)
+        {
+            entry.audio = std::move(audio);
+            entry.state = AssetState::ready;
+            entry.error.reset();
+            entry.lastUse = ++useClock_;
+            readyBytes_ += bytes;
+        }
+        notes.push_back({key, entry.state});
+    }
+    released.clear();
+    notify(notes);
+    if (refused)
+    {
+        return makeError(ErrorCode::outOfMemory, "Memory budget exceeded");
+    }
+    return {};
+}
+
 void AudioBufferCache::cancel(AssetKey key)
 {
     {
