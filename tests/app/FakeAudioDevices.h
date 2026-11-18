@@ -18,8 +18,8 @@ struct FakeWorld
 class FakeDevice final : public juce::AudioIODevice
 {
 public:
-    FakeDevice(const juce::String& name, FakeWorld& world)
-        : AudioIODevice(name, "Fake")
+    FakeDevice(const juce::String& deviceName, FakeWorld& world)
+        : AudioIODevice(deviceName, "Fake")
         , world_(world)
     {
     }
