@@ -13,6 +13,7 @@ endif()
 option(AF_BUILD_TESTS "Build unit tests" ON)
 option(AF_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in AudioForge targets" ON)
 option(AF_ENABLE_RTSAN "Build with Clang RealtimeSanitizer (-fsanitize=realtime)" OFF)
+option(AF_BUILD_BENCHMARKS "Build the engine benchmarks (Google Benchmark)" OFF)
 option(AF_ENABLE_TSAN "Build with ThreadSanitizer (-fsanitize=thread)" OFF)
 
 # --- Global settings ---------------------------------------------------------
@@ -49,4 +50,8 @@ add_subdirectory(apps)
 if(AF_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(AF_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
 endif()
